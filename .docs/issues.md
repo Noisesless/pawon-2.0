@@ -53,7 +53,7 @@ Dokumen ini mencatat daftar isu teknis aktif (OPEN) serta riwayat masalah yang t
 
 ### [RES-004] Perbaikan Hardcode Token Fonnte & Normalisasi Nomor HP Buyer
 - **Tanggal Selesai**: 2026-09-16
-- **Solusi**: Mengganti hardcoded token Fonnte lama yang mati (`Mi2V1BEF2o8kkis8FfRF`) pada `src/sanity/lib/whatsapp.ts` agar membaca variabel lingkungan dinamis (`process.env.FONNTE_TOKEN` / `FONNTE_API_TOKEN`) dengan fallback ke token device baru (`W5F7QE2AoyEUwpDGRdME`). Menambahkan sanitasi & normalisasi otomatis nomor target ke format standar internasional (`628...`) sehingga notifikasi WhatsApp ke Buyer, Admin, Penjual, dan Kurir terkirim tanpa kendala format nomor.
+- **Solusi**: Mengganti token hardcoded lama pada `src/sanity/lib/whatsapp.ts` agar membaca variabel lingkungan dinamis (`process.env.FONNTE_TOKEN` / `FONNTE_API_TOKEN`). Menambahkan sanitasi & normalisasi otomatis nomor target ke format standar internasional (`628...`) sehingga notifikasi WhatsApp ke Buyer, Admin, Penjual, dan Kurir terkirim tanpa kendala format nomor.
 
 ### [RES-005] Perbaikan Tumpang Tindih Tombol Tambah ke Keranjang Mobile & Sinkronisasi Cart
 - **Tanggal Selesai**: 2026-09-16
@@ -61,7 +61,8 @@ Dokumen ini mencatat daftar isu teknis aktif (OPEN) serta riwayat masalah yang t
 
 ### [RES-006] Sinkronisasi & Pembaruan Menyeluruh Seluruh Dokumentasi Utama
 - **Tanggal Selesai**: 2026-09-16
-- **Solusi**: Memperbarui dan menyelaraskan 9 berkas blueprint `/.docs/`, `app-context.md`, `README.md`, serta panduan pengguna root (`ARCHITECTURE.md`, `PANDUAN_MENYELURUH.md`, `manual-admin.MD`). Memastikan seluruh detail teknis mutakhir (port 3333, integrasi multi-channel Fonnte token `W5F7QE2AoyEUwpDGRdME`, pengujian jaringan Wi-Fi LAN `192.168.1.39`, dan penanganan routing mobile) terdokumentasi rapi tanpa amnesia konteks.
+- **Solusi**: Memperbarui dan menyelaraskan 9 berkas blueprint `/.docs/`, `app-context.md`, `README.md`, serta panduan pengguna root (`ARCHITECTURE.md`, `PANDUAN_MENYELURUH.md`, `manual-admin.MD`). Memastikan seluruh detail teknis mutakhir (port 3333, integrasi multi-channel Fonnte token via env, pengujian jaringan Wi-Fi LAN `192.168.1.39`, dan penanganan routing mobile) terdokumentasi rapi tanpa amnesia konteks.
+
 
 ### [RES-007] Perbaikan Duplikasi Deklarasi Variabel pada Server Action `order.ts`
 - **Tanggal Selesai**: 2026-09-16

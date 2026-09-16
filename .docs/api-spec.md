@@ -127,7 +127,8 @@ Layanan internal untuk broadcast pesan WhatsApp ke semua stakeholder:
 
 | Fungsi | Parameter | Tipe Kembalian | Deskripsi |
 |---|---|---|---|
-| `sendWhatsAppNotification` | `target: string, message: string` | `Promise<{ success: boolean, data?: any, error?: string }>` | Mengirim pesan ke endpoint `https://api.fonnte.com/send`. Menggunakan token dari `process.env.FONNTE_TOKEN` / `FONNTE_API_TOKEN` (fallback token device baru `W5F7QE2AoyEUwpDGRdME`), serta otomatis menormalisasi nomor tujuan menjadi format standar internasional `628...`. |
+| `sendWhatsAppNotification` | `target: string, message: string` | `Promise<{ success: boolean, data?: any, error?: string }>` | Mengirim pesan ke endpoint `https://api.fonnte.com/send`. Menggunakan token dari variabel lingkungan `process.env.FONNTE_TOKEN` / `FONNTE_API_TOKEN`, serta otomatis menormalisasi nomor tujuan menjadi format standar internasional `628...`. |
+
 | `formatOrderMessage` | `orderNumber, customerName, customerPhone, deliveryAddress, items, totalPrice, shippingFee, grandTotal` | `string` | Membentuk pesan invoice rincian belanja dan instruksi pembayaran COD untuk admin dan kurir. |
 | `formatServiceOrderMessage` | `orderNumber, customerName, customerPhone, serviceAddress, serviceName, serviceDate, price` | `string` | Membentuk format pesan penugasan layanan jasa warga. |
 

@@ -24,7 +24,8 @@ Dokumen ini menjelaskan tata cara deployment aplikasi **PAWON** dari lingkungan 
 | `SANITY_API_WRITE_TOKEN` | `sk...` (Aktif & Terverifikasi) | `sk...` (Token Write Produksi) | 🔴 **Sangat Rahasia**. Digunakan Server Actions untuk menulis order, upload produk, dan status kurir. |
 
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3333` | `https://pawon.pondokrejo.id` | Publik. Domain dasar pembentukan *Magic Link* WhatsApp. |
-| `FONNTE_TOKEN` | `W5F7QE2AoyEUwpDGRdME` | `W5F7QE2AoyEUwpDGRdME` | 🔴 **Rahasia**. Token device WhatsApp Gateway (Fonnte) untuk broadcast notifikasi pesanan ke Admin, Penjual, Kurir, & Pembeli. |
+| `FONNTE_TOKEN` | `your_fonnte_token` | `your_fonnte_token` | 🔴 **Rahasia**. Token device WhatsApp Gateway (Fonnte) untuk broadcast notifikasi pesanan ke Admin, Penjual, Kurir, & Pembeli. |
+
 | `NODE_ENV` | `development` | `production` | Sistem. Mengaktifkan optimasi build Turbopack & PWA Service Worker. |
 
 ---

@@ -71,7 +71,7 @@ Seluruh arsitektur, panduan teknis, dan spesifikasi sistem terpusat pada direkto
     NEXT_PUBLIC_SANITY_DATASET="production"
     SANITY_API_WRITE_TOKEN="your_write_token"
     NEXT_PUBLIC_BASE_URL="http://localhost:3333"
-    FONNTE_TOKEN="W5F7QE2AoyEUwpDGRdME"
+    FONNTE_TOKEN="your_fonnte_token"
     ```
 
 4.  **Jalankan Mode Pengembangan**:
