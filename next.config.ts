@@ -1,0 +1,24 @@
+import type { NextConfig } from "next";
+import withPWAInit from "@ducanh2912/next-pwa";
+
+const withPWA = withPWAInit({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+});
+
+const nextConfig: NextConfig = {
+  turbopack: {},
+  allowedDevOrigins: ['192.168.1.39', '192.168.1.39:3333', 'localhost:3333'],
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'cdn.sanity.io',
+      },
+    ],
+  },
+};
+
+export default withPWA(nextConfig);

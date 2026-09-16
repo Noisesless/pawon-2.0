@@ -1,0 +1,129 @@
+'use client'
+
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
+import { Product } from '@/types'
+import type { Image } from 'sanity'
+
+export interface CartItem {
+  _id: string
+  name: string
+  price: number
+  image: Image
+  quantity: number
+  vendorName: string
+}
+
+interface CartContextType {
+  items: CartItem[]
+  addItem: (product: Product) => void
+  removeItem: (id: string) => void
+  updateQuantity: (id: string, delta: number) => void
+  clearCart: () => void
+  totalItems: number
+  totalPrice: number
+  shippingFee: number
+  grandTotal: number
+}
+
+const CartContext = createContext<CartContextType | undefined>(undefined)
+
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>([])
+  const [isInitialized, setIsInitialized] = useState(false)
+  const shippingFee = items.length > 0 ? 5000 : 0 // Tarif flat Rp 5.000 untuk pengiriman kalurahan
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('pondokrejo-cart')
+        if (saved) {
+          setItems(JSON.parse(saved))
+        }
+      } catch (e) {
+        console.error('Failed to parse cart', e)
+      } finally {
+        setIsInitialized(true)
+      }
+    }
+  }, [])
+
+  // Save to localStorage only after initialization
+  useEffect(() => {
+    if (isInitialized && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('pondokrejo-cart', JSON.stringify(items))
+      } catch (e) {
+        console.error('Failed to save cart to localStorage', e)
+      }
+    }
+  }, [items, isInitialized])
+
+  const addItem = (product: Product) => {
+    setItems((prev) => {
+      const existing = prev.find((i) => i._id === product._id)
+      if (existing) {
+        return prev.map((i) =>
+          i._id === product._id ? { ...i, quantity: i.quantity + 1 } : i
+        )
+      }
+      return [
+        ...prev,
+        {
+          _id: product._id,
+          name: product.name,
+          price: product.price,
+          image: product.image,
+          quantity: 1,
+          vendorName: product.vendor?.name || 'UMKM Pondokrejo',
+        },
+      ]
+    })
+  }
+
+  const removeItem = (id: string) => {
+    setItems((prev) => prev.filter((i) => i._id !== id))
+  }
+
+  const updateQuantity = (id: string, delta: number) => {
+    setItems((prev) =>
+      prev
+        .map((i) =>
+          i._id === id ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i
+        )
+        .filter((i) => i.quantity > 0)
+    )
+  }
+
+  const clearCart = () => setItems([])
+
+  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0)
+  const totalPrice = items.reduce((sum, i) => sum + i.price * i.quantity, 0)
+  const grandTotal = totalPrice + shippingFee
+
+  return (
+    <CartContext.Provider
+      value={{
+        items,
+        addItem,
+        removeItem,
+        updateQuantity,
+        clearCart,
+        totalItems,
+        totalPrice,
+        shippingFee,
+        grandTotal,
+      }}
+    >
+      {children}
+    </CartContext.Provider>
+  )
+}
+
+export function useCart() {
+  const context = useContext(CartContext)
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider')
+  }
+  return context
+}
