@@ -2,11 +2,17 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { ShoppingCart, User, Search } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { ShoppingCart, User } from 'lucide-react'
 import { useCart } from '@/context/CartContext'
 
 export default function Navbar() {
   const { totalItems } = useCart()
+  const pathname = usePathname()
+
+  if (pathname?.startsWith('/admin') || pathname?.startsWith('/studio')) {
+    return null
+  }
 
   return (
     <nav className="border-b bg-white/80 backdrop-blur-md sticky top-0 z-50 print:hidden">

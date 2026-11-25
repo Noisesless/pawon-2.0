@@ -14,6 +14,7 @@ import {
   Rocket,
   Settings,
   Wallet,
+  ExternalLink,
 } from 'lucide-react'
 import {
   fetchAdminDashboardData,
@@ -269,6 +270,14 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="px-3 py-2 rounded-xl bg-[var(--vibe-surface-sub)] text-[var(--vibe-text-sub)] hover:text-[var(--vibe-text-main)] text-xs font-black inline-flex items-center gap-1.5 transition-colors"
+              title="Buka Etalase Warga"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span className="hidden sm:inline">Lihat Toko</span>
+            </Link>
             <button
               type="button"
               onClick={() => window.print()}
