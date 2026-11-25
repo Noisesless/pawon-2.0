@@ -1,6 +1,8 @@
 'use server'
 
 import { createClient } from 'next-sanity'
+import { headers } from 'next/headers'
+import { buildOrderActionUrl } from '@/lib/actionToken'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -10,19 +12,38 @@ const writeClient = createClient({
   token: process.env.SANITY_API_WRITE_TOKEN,
 })
 
+async function resolveBaseUrl(): Promise<string> {
+  const configured = (process.env.NEXT_PUBLIC_BASE_URL || '').trim()
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const h = await headers()
+      const host = h.get('x-forwarded-host') || h.get('host') || ''
+      const proto = h.get('x-forwarded-proto') || 'http'
+      if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+        return `${proto}://${host}`
+      }
+    } catch {
+      // Ignore outside request context
+    }
+  }
+  return configured || 'https://pawon.pondokrejo.id'
+}
+
 export async function createServiceOrder(data: {
-  customerName: string,
-  customerPhone: string,
-  deliveryAddress: string,
-  serviceId: string,
-  serviceDate: string,
-  customerId: string,
+  customerName: string
+  customerPhone: string
+  deliveryAddress: string
+  serviceId: string
+  serviceDate: string
+  customerId: string
 }) {
   try {
-    // Cari layanan untuk mendapatkan vendor
-    const service = await writeClient.fetch(`*[_type == "service" && _id == $serviceId][0]{
-      name, price, "vendor": vendor->{_id, name, phone}
-    }`, { serviceId: data.serviceId })
+    const service = await writeClient.fetch(
+      `*[_type == "service" && _id == $serviceId][0]{
+        name, price, "vendor": vendor->{_id, name, phone}
+      }`,
+      { serviceId: data.serviceId }
+    )
 
     if (!service) {
       return { success: false, error: 'Layanan jasa tidak ditemukan.' }
@@ -44,7 +65,6 @@ export async function createServiceOrder(data: {
 
     const finalCustomerId = await publishDraft(data.customerId)
     const finalServiceId = await publishDraft(data.serviceId)
-
     const orderNumber = `SVC-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`
 
     const doc = {
@@ -63,26 +83,26 @@ export async function createServiceOrder(data: {
         _ref: finalServiceId,
       },
       serviceDate: data.serviceDate,
-      totalAmount: service.price, // Harga acuan awal (bisa nego nanti)
-      paymentMethod: 'cod', // Jasa biasanya dibayar di tempat setelah selesai
+      totalAmount: service.price,
+      paymentMethod: 'cod',
       paymentStatus: 'unpaid',
-      status: 'pending', // Menunggu penjual menyanggupi
-      // Simpan referensi ke vendor agar mudah dicari di dasbor vendor
-      vendorId_for_query_only: service.vendor?._id // Catatan: ini tidak ada di schema secara default, tapi Sanity tetap menyimpan jika dikirim
+      status: 'pending',
+      vendorId_for_query_only: service.vendor?._id,
     }
 
     const result = await writeClient.create(doc)
 
-    // --- INTEGRASI FONNTE WHATSAPP ---
     if (result._id) {
       try {
-        const { formatServiceOrderMessage, sendWhatsAppNotification } = await import('@/sanity/lib/whatsapp')
+        const { formatServiceOrderMessage, sendWhatsAppNotification } = await import(
+          '@/sanity/lib/whatsapp'
+        )
         const { APP_SETTINGS_QUERY } = await import('@/sanity/lib/queries')
-        
-        const settings = await writeClient.fetch(APP_SETTINGS_QUERY)
-        const adminPhone = settings?.adminPhone || '081328128315'
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://pawon.pondokrejo.id'
-        
+
+        const settings = await writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' })
+        const adminPhone = settings?.adminPhone || '+62895325586281'
+        const baseUrl = await resolveBaseUrl()
+
         const waMessage = formatServiceOrderMessage(
           orderNumber,
           data.customerName,
@@ -93,20 +113,59 @@ export async function createServiceOrder(data: {
           service.price
         )
 
-        // Kirim ke Admin
-        const adminMsg = `${waMessage}\n\n✅ Konfirmasi (Sanggup): ${baseUrl}/order/${orderNumber}/action?role=admin&status=accepted&label=Sanggup+Mengerjakan\n❌ Batal/Tolak: ${baseUrl}/order/${orderNumber}/action?role=admin&status=cancelled&label=Tolak+Pesanan`
-        await sendWhatsAppNotification(adminPhone, adminMsg)
+        // Log bersih untuk Admin (tanpa emoji)
+        await sendWhatsAppNotification(
+          adminPhone,
+          `${waMessage}\n*LOG PEMESANAN JASA*\nPemesanan jasa ini sudah diteruskan langsung ke penyedia jasa (${service.vendor?.name || 'Mitra Jasa'}).`
+        )
 
-        // Kirim ke Penjual Jasa (Vendor)
+        // Kirim tombol Sanggup / Tolak ke Penyedia Jasa
         if (service.vendor?.phone) {
-          const sellerMsg = `🔔 *PESANAN JASA BARU* 🔔\n\nHalo *${service.vendor.name}*,\nAda pemesanan jasa yang masuk untuk Anda:\n\n👤 *Pemesan:* ${data.customerName}\n📞 *No. WA:* ${data.customerPhone}\n📍 *Lokasi:* ${data.deliveryAddress}\n🗓️ *Jadwal:* ${new Date(data.serviceDate).toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' })}\n💼 *Jasa:* ${service.name}\n\n*Admin Desa akan segera menghubungi Anda untuk memastikan kesanggupan.* Anda juga bisa berkoordinasi langsung dengan pemesan melalui nomor WA di atas.`
+          const acceptUrl = buildOrderActionUrl(baseUrl, {
+            orderNumber,
+            role: 'seller',
+            status: 'delivering',
+            label: 'Sanggup Mengerjakan Jasa',
+          })
+          const rejectUrl = buildOrderActionUrl(baseUrl, {
+            orderNumber,
+            role: 'seller',
+            status: 'cancelled',
+            label: 'Jadwal Bentrok / Tolak Jasa',
+          })
+          const sellerMsg = `*PAWON PONDOKREJO - PESANAN JASA BARU*
+--------------------------------
+Halo ${service.vendor.name},
+Ada pemesanan layanan jasa untuk Anda:
+
+No. Pesanan : ${orderNumber}
+Pemesan     : ${data.customerName}
+WhatsApp    : ${data.customerPhone}
+Alamat      : ${data.deliveryAddress}
+Jadwal      : ${new Date(data.serviceDate).toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' })}
+Layanan     : ${service.name}
+--------------------------------
+Pilihan tindakan penyedia jasa:
+[1] Sanggup Mengerjakan:
+${acceptUrl}
+
+[2] Belum Bisa Menerima (Batalkan):
+${rejectUrl}`
           await sendWhatsAppNotification(service.vendor.phone, sellerMsg)
         }
 
-        // Kirim ke Pembeli
+        // Kirim konfirmasi bersih ke Pembeli
         await sendWhatsAppNotification(
-          data.customerPhone, 
-          `Halo *${data.customerName}*,\n\nTerima kasih, pemesanan jasa *${service.name}* Anda telah kami terima dengan ID *${orderNumber}*.\n\nAdmin Desa dan Penjual Jasa sedang mengecek jadwal dan akan segera menghubungi Anda untuk konfirmasi pelaksanaan.`
+          data.customerPhone,
+          `*PAWON PONDOKREJO - PEMESANAN JASA DITERIMA*
+--------------------------------
+Halo ${data.customerName},
+
+Pemesanan jasa *${service.name}* Anda telah tercatat dengan nomor ${orderNumber}.
+Penyedia jasa akan segera menghubungi Anda untuk konfirmasi jadwal kedatangan.
+
+Lacak status pesanan di:
+${baseUrl}/track/${orderNumber}`
         )
       } catch (err) {
         console.error('Failed to send WA notification for service:', err)

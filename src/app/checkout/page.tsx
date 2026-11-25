@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useCart } from '@/context/CartContext'
-import { createOrder } from '@/app/actions/order'
+import { createOrder, getPublicPaymentSettings } from '@/app/actions/order'
 import { getOrCreateCustomer, getCustomerById } from '@/app/actions/customer'
 import { useRouter } from 'next/navigation'
 import { Loader2, CheckCircle, MessageCircle } from 'lucide-react'
 import { OrderFormData } from '@/types'
+import DynamicQrisCard from '@/components/DynamicQrisCard'
+import { DEFAULT_PAWON_STATIC_QRIS } from '@/lib/qrisEngine'
 
 export default function CheckoutPage() {
   const { items, totalPrice, shippingFee, grandTotal, clearCart } = useCart()
@@ -22,20 +24,41 @@ export default function CheckoutPage() {
     paymentMethod: 'cod',
   })
 
-  // Load existing profile
+  const [qrisConfig, setQrisConfig] = useState({
+    isQrisEnabled: true,
+    qrisMerchantName: 'PAWON PONDOKREJO',
+    qrisNmid: 'ID1026574925990',
+    qrisStaticPayload: DEFAULT_PAWON_STATIC_QRIS,
+    isUsingDemoPayload: true,
+  })
+
+  // Load existing profile & dynamic QRIS settings
   useEffect(() => {
     const savedId = localStorage.getItem('pawon-customerId')
     if (savedId) {
       getCustomerById(savedId).then((res) => {
         if (res.success && res.data) {
-          setFormData({
+          setFormData((prev) => ({
+            ...prev,
             name: res.data.name,
             phone: res.data.phone,
-            address: res.data.address
-          })
+            address: res.data.address,
+          }))
         }
       })
     }
+
+    getPublicPaymentSettings().then((res) => {
+      if (res.success && res.data) {
+        setQrisConfig({
+          isQrisEnabled: res.data.isQrisEnabled,
+          qrisMerchantName: res.data.qrisMerchantName,
+          qrisNmid: res.data.qrisNmid,
+          qrisStaticPayload: res.data.qrisStaticPayload,
+          isUsingDemoPayload: res.data.isUsingDemoPayload,
+        })
+      }
+    })
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,11 +185,14 @@ export default function CheckoutPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={!qrisConfig.isQrisEnabled}
                   onClick={() => setFormData({ ...formData, paymentMethod: 'qris' })}
-                  className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${formData.paymentMethod === 'qris' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-green-200'}`}
+                  className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${formData.paymentMethod === 'qris' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-green-200'} ${!qrisConfig.isQrisEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <span className="font-bold">Bayar Pakai QRIS</span>
-                  <span className="text-xs opacity-70">Aman & Terpantau</span>
+                  <span className="font-bold">QRIS</span>
+                  <span className="text-xs opacity-70">
+                    {qrisConfig.isQrisEnabled ? 'm-Banking / E-Wallet' : 'Segera Hadir'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -208,24 +234,22 @@ export default function CheckoutPage() {
               <span className="text-lg font-bold">Total Pembayaran</span>
               <span className="text-2xl font-black text-green-700">Rp {grandTotal.toLocaleString('id-ID')}</span>
             </div>
-            <div className="bg-yellow-50 p-4 rounded-2xl text-xs text-yellow-800 flex items-start gap-2">
-              <span className="font-bold text-lg leading-none">!</span>
-              <p>
-                {formData.paymentMethod === 'qris'
-                  ? 'Silakan selesaikan pembayaran dengan scan QRIS dan klik "Buat Pesanan" untuk mengirim bukti bayar ke Admin Desa.'
-                  : 'Anda akan membayar pesanan ini secara tunai (COD) saat barang diantar oleh kurir ke alamat Anda.'}
-              </p>
-            </div>
-            {formData.paymentMethod === 'qris' && (
-              <div className="border-t pt-6 mt-4 text-center">
-                <h3 className="font-bold text-gray-800 mb-4">Scan QRIS Berikut:</h3>
-                <div className="bg-white p-4 rounded-2xl border-2 border-gray-100 inline-block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/qris.webp" alt="QRIS Desa Pondokrejo" className="w-48 h-48 object-contain mx-auto" />
-                </div>
-                <p className="text-xs text-gray-500 mt-4">
-                  a.n. <strong>Desa Pondokrejo</strong>
+            {formData.paymentMethod === 'cod' && (
+              <div className="bg-yellow-50 p-4 rounded-2xl text-xs text-yellow-800 flex items-start gap-2">
+                <span className="font-bold text-lg leading-none">!</span>
+                <p>
+                  Anda akan membayar pesanan ini secara tunai (COD) saat barang diantar oleh kurir ke alamat Anda.
                 </p>
+              </div>
+            )}
+            {formData.paymentMethod === 'qris' && (
+              <div className="border-t pt-6 mt-4">
+                <DynamicQrisCard
+                  amount={grandTotal}
+                  merchantName={qrisConfig.qrisMerchantName}
+                  nmid={qrisConfig.qrisNmid}
+                  staticPayload={qrisConfig.qrisStaticPayload}
+                />
               </div>
             )}
           </div>

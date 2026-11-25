@@ -4,35 +4,52 @@ import { useState, use } from 'react'
 import { updateOrderStatus } from '@/app/actions/order'
 import { CheckCircle, AlertTriangle, Loader2, ChevronLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 
 interface Props {
   params: Promise<{ orderNumber: string }>
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Admin',
+  seller: 'Penjual',
+  courier: 'Kurir',
+  buyer: 'Pembeli',
 }
 
 export default function MobileOrderActionPage({ params }: Props) {
   const resolvedParams = use(params)
   const searchParams = useSearchParams()
   const router = useRouter()
-  
+
   const orderNumber = resolvedParams.orderNumber
-  const role = searchParams.get('role')
+  const role = searchParams.get('role') || 'system'
   const status = searchParams.get('status')
   const label = searchParams.get('label')
   const courierId = searchParams.get('courierId')
   const courierPhone = searchParams.get('courierPhone')
+  const token = searchParams.get('k')
 
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  const [doneMessage, setDoneMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleAction = async () => {
     if (!orderNumber || !status) return
-    
+
     setLoading(true)
-    const res = await updateOrderStatus(orderNumber, status, `Update via WhatsApp (${role})`, courierId || undefined, courierPhone || undefined)
-    
+    const roleName = ROLE_LABEL[role] || 'Petugas'
+    const res = await updateOrderStatus(
+      orderNumber,
+      status,
+      `Diperbarui oleh ${roleName} melalui tautan konfirmasi`,
+      courierId || undefined,
+      courierPhone || undefined,
+      { role, token }
+    )
+
     if (res.success) {
+      setDoneMessage((res as any).message || `Status pesanan ${orderNumber} telah diperbarui.`)
       setDone(true)
     } else {
       setError(res.error || 'Gagal memperbarui status.')
@@ -46,12 +63,13 @@ export default function MobileOrderActionPage({ params }: Props) {
         <div className="bg-green-100 p-8 rounded-[3rem] mb-6 shadow-lg shadow-green-100/50">
           <CheckCircle className="w-16 h-16 text-green-600" />
         </div>
-        <h1 className="text-3xl font-black text-slate-900 mb-2">Berhasil!</h1>
-        <p className="text-slate-500 mb-10 px-4">
-          Status pesanan <b>{orderNumber}</b> telah diperbarui.
-        </p>
+        <h1 className="text-3xl font-black text-slate-900 mb-2">Berhasil</h1>
+        <p className="text-slate-500 mb-10 px-4">{doneMessage}</p>
 
-        <button onClick={() => window.close()} className="w-full max-w-sm bg-slate-900 text-white text-center font-black py-5 rounded-3xl shadow-xl active:scale-95 transition-all">
+        <button
+          onClick={() => window.close()}
+          className="w-full max-w-sm bg-slate-900 text-white text-center font-black py-5 rounded-3xl shadow-xl active:scale-95 transition-all"
+        >
           Tutup Halaman
         </button>
       </div>
@@ -61,10 +79,13 @@ export default function MobileOrderActionPage({ params }: Props) {
   return (
     <div className="flex flex-col min-h-screen bg-white">
       <header className="sticky top-0 bg-white/80 backdrop-blur-md z-40 border-b border-slate-100 p-4 flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2 rounded-xl bg-slate-50 text-slate-900 active:scale-90 transition-all">
+        <button
+          onClick={() => router.back()}
+          className="p-2 rounded-xl bg-slate-50 text-slate-900 active:scale-90 transition-all"
+        >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-lg font-black text-slate-900">Konfirmasi Aksi</h1>
+        <h1 className="text-lg font-black text-slate-900">Konfirmasi Tindakan</h1>
       </header>
 
       <main className="p-6 pb-32 flex flex-col items-center justify-center flex-grow">
@@ -73,12 +94,16 @@ export default function MobileOrderActionPage({ params }: Props) {
             <AlertTriangle className="w-10 h-10 text-blue-600" />
           </div>
           <h2 className="text-2xl font-black text-slate-900">Konfirmasi Status</h2>
-          <p className="text-slate-500 font-medium mt-2">Pesanan: <span className="font-bold text-slate-800">{orderNumber}</span></p>
+          <p className="text-slate-500 font-medium mt-2">
+            Pesanan: <span className="font-bold text-slate-800">{orderNumber}</span>
+          </p>
         </div>
 
         <div className="bg-slate-50 p-6 rounded-[2rem] mb-8 w-full max-w-sm border border-slate-100 text-center">
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Aksi yang Dipilih:</p>
-          <p className="text-lg font-black text-slate-800">{label || 'Update Status'}</p>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+            Tindakan yang Dipilih:
+          </p>
+          <p className="text-lg font-black text-slate-800">{label || 'Perbarui Status'}</p>
         </div>
 
         {error && (
@@ -95,7 +120,7 @@ export default function MobileOrderActionPage({ params }: Props) {
           >
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Ya, Konfirmasi'}
           </button>
-          
+
           <button
             disabled={loading}
             onClick={() => router.back()}

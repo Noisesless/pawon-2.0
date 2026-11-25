@@ -51,6 +51,12 @@ export const courierType = defineType({
       },
       initialValue: 'active',
     }),
+    defineField({
+      name: 'lastAssignedAt',
+      title: 'Terakhir Mendapat Giliran',
+      type: 'datetime',
+      readOnly: true,
+    }),
   ],
   preview: {
     select: {

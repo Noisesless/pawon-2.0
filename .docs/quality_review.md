@@ -1,91 +1,59 @@
 # Tinjauan Kualitas Kode & Analisis Deprecation 🔍
-**Pasar Warga Pondokrejo — Evaluasi Arsitektur Next.js 16 & Sanity**
+**Pasar Warga Pondokrejo — Evaluasi Arsitektur Next.js 16, Testing, & Sanity**
 
-Dokumen ini memuat temuan analisis kualitas kode, metrik kompleksitas, status kepatuhan tipe data TypeScript, serta daftar rekomendasi refactoring terkait fitur-fitur baru dan deprecations pada **Next.js 16.2.6** dan **Sanity v5**.
+Dokumen ini mencatat status kesehatan kode terkini, cakupan automated testing, temuan deprecation **Next.js 16.2.6**, serta hutang refactoring yang masih perlu ditangani (termasuk alur transaksi multi-pihak).
 
 ---
 
 ## 1. Ringkasan Status Kesehatan Kode
 
-| Aspek | Status | Catatan |
+| Aspek | Status | Catatan Terverifikasi |
 |---|---|---|
-| **TypeScript Type Checking** | 🟢 Baik | Seluruh model entitas terdefinisi di `src/types/index.ts`. Penggunaan tipe data GROQ terstruktur. |
-| **Server-First Architecture** | 🟢 Sangat Baik | Pemisahan tegas antara Server Components dan Client Components (`'use client'`). |
-| **Pemisahan Logika Bisnis** | 🟢 Sangat Baik | Mutasi database terpusat pada 12 file Server Actions di `src/app/actions/`. |
-| **Styling & Design System** | 🟢 Baik | Tailwind CSS v4 terintegrasi penuh dengan variabel CSS root dan glassmorphism utility. |
-| **Automated Testing** | 🟡 Moderat | Vitest & React Testing Library telah dikonfigurasi. Terdapat test unit untuk `AddToCartButton` dan `order.ts`. |
-| **Next.js 16 Breaking Conventions** | 🟡 Perlu Perhatian | Terdapat 4 peringatan deprecation resmi dari Next.js 16 runtime yang siap dimodernisasi. |
+| **TypeScript Type Checking** | 🟢 Bersih | `npx tsc --noEmit` lulus dengan 0 error; tipe entitas terdefinisi di `src/types/index.ts`. |
+| **Server-First Architecture** | 🟢 Baik | Pemisahan tegas antara Server Components, Client Components, dan Server Actions (`src/app/actions/` — 13 modul). |
+| **Admin Zero-Draft Architecture** | 🟢 Baik | Seluruh CRUD admin (`/admin`) menargetkan dokumen published langsung (mengeliminasi `drafts.*` trap). |
+| **Dynamic QRIS & SOP Engines** | 🟢 Teruji | Logika TLV EMVCo (`qrisEngine.ts`) dan klasifikasi SLA (`orderSopEngine.ts`) dipisahkan sebagai pure functions teruji. |
+| **Automated Testing (Vitest)** | 🟢 Baik | **6 file test** (total **17 test case** di `qrisEngine`, `orderSopEngine`, `workflowSync`, `cart`, `order`, dan `AddToCartButton`) menggunakan Vitest v4 + RTL. |
+| **Alur Transaksi Multi-Pihak** | 🟢 Selesai & Teruji | Round-Robin kurir, auto-skip timeout, COD otomatis (Admin log-only), Hybrid QRIS, HMAC action-link guard, serta portal `/lapak` & `/kurir` telah diperbaiki (`ISS-005` s.d. `ISS-010`). |
+| **Next.js 16 Conventions** | 🟡 Perlu Modernisasi | Peringatan deprecation runtime (`middleware.ts`, `themeColor`, `@sanity/image-url`, `defineLive`) masih berlaku untuk roadmap cleanup berikutnya. |
 
 ---
 
-## 2. Temuan Deprecation & Rekomendasi Modernisasi (Next.js 16)
+## 2. Temuan Deprecation & Modernisasi (Next.js 16 & Sanity v5)
 
-### A. Deprecation Konvensi `middleware.ts` ➜ `proxy.ts`
-- **Pesan Runtime**:
-  ```text
-  ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
-  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
-  ```
+### A. Konvensi `middleware.ts` ➜ `proxy.ts`
 - **Lokasi**: `src/middleware.ts`
-- **Dampak**: Pada Next.js 16+, konvensi middleware penanganan perutean jaringan bertransisi ke antarmuka Proxy yang lebih efisien.
-- **Rencana Tindakan**: Siapkan migrasi penamaan dan struktur handler ke format Proxy saat framework sepenuhnya menghapus kompatibilitas backward.
+- **Catatan**: Next.js 16 menyarankan migrasi ke konvensi `proxy.ts`. Dipertahankan sementara sampai seluruh adapter/matcher diuji penuh pada rilis produksi.
 
-### B. Deprecation Ekspor Default `@sanity/image-url`
-- **Pesan Runtime**:
-  ```text
-  The default export of @sanity/image-url has been deprecated. Use the named export createImageUrlBuilder instead.
-  ```
+### B. Ekspor Default `@sanity/image-url`
 - **Lokasi**: `src/sanity/lib/image.ts`
-- **Solusi Rekomendasi**:
-  ```diff
-  - import createImageUrlBuilder from '@sanity/image-url'
-  + import { createImageUrlBuilder } from '@sanity/image-url'
-  ```
+- **Solusi**: Gunakan named export `import { createImageUrlBuilder } from '@sanity/image-url'`.
 
 ### C. Pemisahan `themeColor` ke `viewport` Export
-- **Pesan Runtime**:
-  ```text
-  ⚠ Unsupported metadata themeColor is configured in metadata export in /. Please move it to viewport export instead.
-  Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
-  ```
-- **Lokasi**: `src/app/layout.tsx` / `src/app/page.tsx`
-- **Solusi Rekomendasi**:
-  Pindahkan properti `themeColor` dari objek `metadata` ke ekspor `viewport`:
-  ```typescript
-  import type { Viewport } from 'next'
-  
-  export const viewport: Viewport = {
-    themeColor: '#15803d',
-  }
-  ```
+- **Lokasi**: `src/app/layout.tsx`
+- **Solusi**: Pindahkan `themeColor` dari `metadata` ke ekspor `export const viewport: Viewport`.
 
-### D. Konfigurasi Token `defineLive` pada Lingkungan Produksi
-- **Pesan Runtime**:
-  ```text
-  No serverToken provided to defineLive. This means that only published content will be fetched and respond to live events.
-  No browserToken provided to defineLive.
-  ```
+### D. Token `defineLive` pada Mode Publik
 - **Lokasi**: `src/sanity/lib/live.ts`
-- **Rekomendasi**: Tambahkan opsi `serverToken: false` dan `browserToken: false` pada mode publik jika draft preview tidak dibutuhkan secara langsung di luar Sanity Studio untuk meredam log peringatan.
+- **Catatan**: Dapat diset `serverToken: false, browserToken: false` jika preview draft luar Studio tidak dipakai.
 
 ---
 
 ## 3. Analisis Kompleksitas & Code Smells
 
-### 1. File `src/app/actions/order.ts` (393 Baris)
-- **Observasi**: File ini menangani kalkulasi keranjang, pengecekan toko tutup, publikasi dokumen draft, pembentukan format pesan WhatsApp multi-stakeholder, dan penulisan transaksi Sanity.
-- **Rekomendasi**: Ekstraksi logika pemformatan pesan WA dan resolusi draft Sanity ke modul helper terpisah agar unit testing fungsi checkout lebih modular.
-
-### 2. Duplikasi Layout Desktop vs Mobile
-- **Observasi**: Antarmuka mobile di `src/app/mobile/*` mereplikasi beberapa query data yang mirip dengan halaman desktop.
-- **Rekomendasi**: Berbagi fungsi helper pengambilan data (Shared Data Fetchers) antara desktop dan mobile untuk meminimalkan redundansi definisi query GROQ.
+1. **`src/app/actions/order.ts` (~479 baris)**:
+   - Menangani checkout, fallback payment settings, pengecekan vendor tutup, resolusi draft, dan pengiriman pesan WA multi-channel.
+   - Sebagian logika alur status masih terduplikasi atau bertabrakan dengan portal (`/lapak`, `/kurir`, `/order/[orderNumber]/action`) — menjadi fokus perbaikan berikutnya (`ISS-005`–`ISS-009`).
+2. **Duplikasi Layout Desktop vs Mobile**:
+   - Halaman di `src/app/mobile/*` masih mengulang beberapa pemanggilan query dan komponen form serupa dengan desktop. Disarankan menyatukan *shared data fetchers* secara bertahap.
+3. **Konsistensi Visual Token (`globals.css`)**:
+   - Token `:root` `--vibe-*` sudah tersedia di `src/app/globals.css`, namun masih ada sejumlah kelas warna utilitas Tailwind langsung pada komponen lama (aman diwariskan, diseragamkan saat `redesign`).
 
 ---
 
 ## 4. Keamanan Kode & Validasi Input
 
-- **Sanitasi Nomor WhatsApp**: Format nomor dinormalisasi secara otomatis (mengubah awalan `08` menjadi kode negara `628`) sebelum diteruskan ke WhatsApp Web atau API Fonnte.
-- **Validasi PIN Sisi Server**: Pengecekan PIN lapak (`/lapak`) dan kurir (`/kurir`) dilakukan melalui Server Action dengan `SANITY_API_WRITE_TOKEN` yang tidak pernah bocor ke client browser.
-- **Injeksi Parameter GROQ**: Semua query GROQ menggunakan parameterisasi (`$search`, `$slug`, `$id`) untuk mencegah kerentanan injection pada Sanity query engine.
-- **Otorisasi Mutasi Terproteksi**: Seluruh mutasi transaksi dan pembuatan profil pelanggan diamankan di sisi server via `SANITY_API_WRITE_TOKEN` berizin Editor, mencegah modifikasi dokumen tanpa hak akses dari sisi client.
-
+- **Sanitasi Nomor WhatsApp**: Otomatis menormalisasi `08...` menjadi format `628...` sebelum dikirim ke Fonnte maupun tautan `wa.me`.
+- **PIN Server-Side & Proteksi Mutasi**: Validasi PIN Admin, Penjual, Kurir, dan Pembeli dijalankan melalui Server Actions menggunakan `SANITY_API_WRITE_TOKEN` yang tidak pernah diekspos ke browser client.
+- **Proteksi Cron Endpoint**: `/api/cron/order-sop` mendukung otorisasi token `CRON_SECRET` (Bearer header maupun query secret).
+- **Zero-Draft Guard**: Mutasi admin maupun order tidak meninggalkan dokumen tertahan di `drafts.*`, dan endpoint diagnostik / repo dijaga bersih dari kebocoran token (SP-032/033).

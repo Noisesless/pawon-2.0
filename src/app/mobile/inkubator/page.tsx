@@ -36,6 +36,8 @@ export default async function MobileIncubatorPage() {
   ]);
 
   const heroImageUrl = settings?.image ? urlFor(settings.image).width(800).height(1000).url() : null;
+  const rawPhone = (settings?.adminPhone || "+62895325586281").replace(/\D/g, "");
+  const waAdminPhone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone;
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50">
@@ -67,7 +69,7 @@ export default async function MobileIncubatorPage() {
             <h2 className="text-4xl font-black mb-4 tracking-tighter leading-tight">Membangun Bisnis dari <span className="text-green-500">Kalurahan</span>.</h2>
             <p className="text-slate-400 text-sm font-medium mb-8 leading-relaxed">Dukungan penuh Kalurahan Pondokrejo untuk memajukan usaha warga.</p>
             <a
-              href="https://wa.me/081234567890"
+              href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin berkonsultasi mengenai Inkubator UMKM Pondokrejo.`}
               className="w-full flex items-center justify-center gap-3 bg-green-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-green-600/20 active:scale-95 transition-all"
             >
               Konsultasi Sekarang
@@ -112,7 +114,7 @@ export default async function MobileIncubatorPage() {
                 <h3 className="text-xl font-black mb-4">Konsultasi UMKM</h3>
                 <p className="text-slate-400 text-xs mb-6 font-medium">Punya kendala bisnis? Diskusi gratis dengan tim pendamping kami.</p>
                 <a 
-                  href="https://wa.me/081234567890"
+                  href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin berkonsultasi mengenai Inkubator UMKM Pondokrejo.`}
                   className="inline-flex items-center gap-2 text-green-400 font-black text-sm"
                 >
                   <MessageCircle className="w-5 h-5" />

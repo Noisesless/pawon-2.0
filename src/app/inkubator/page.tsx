@@ -35,6 +35,8 @@ export default async function IncubatorPage() {
   ]);
 
   const heroImageUrl = settings?.image ? urlFor(settings.image).width(1920).height(1080).url() : null;
+  const rawPhone = (settings?.adminPhone || "+62895325586281").replace(/\D/g, "");
+  const waAdminPhone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone;
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -63,7 +65,7 @@ export default async function IncubatorPage() {
             Program pendampingan komprehensif dari Kalurahan Pondokrejo untuk membantu warga membangun, mengembangkan, dan memajukan usaha hingga level profesional.
           </p>
           <a
-            href="https://wa.me/081234567890?text=Halo, saya ingin bergabung dengan Inkubator UMKM Pondokrejo."
+            href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin bergabung dengan Inkubator UMKM Pondokrejo.`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-3 bg-green-600 hover:bg-green-700 text-white font-black px-10 py-5 rounded-3xl transition-all shadow-xl shadow-green-600/30 hover:scale-105 active:scale-95"
@@ -117,7 +119,7 @@ export default async function IncubatorPage() {
               <p className="text-slate-400 text-lg mb-10 font-medium">Jangan biarkan usaha Anda jalan di tempat. Bergabunglah dengan puluhan UMKM Pondokrejo lainnya yang sudah naik kelas.</p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <a 
-                   href="https://wa.me/081234567890" 
+                   href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin berkonsultasi mengenai Inkubator UMKM Pondokrejo.`} 
                    className="bg-green-600 text-white font-black px-8 py-4 rounded-2xl hover:bg-green-700 transition-all flex items-center justify-center gap-3"
                 >
                   <MessageCircle className="w-5 h-5" />

@@ -6,6 +6,30 @@
   --primary: #15803d; /* green 700 */
   --primary-light: #f0fdf4; /* green 50 */
   --accent: #f59e0b; /* amber 500 */
+
+  /* PAWON Design System SSOT Tokens (.docs/design-system.md) */
+  --vibe-background: #f8fafc;
+  --vibe-surface: #ffffff;
+  --vibe-surface-sub: #f1f5f9;
+  --vibe-border: #e2e8f0;
+  --vibe-text-main: #0f172a;
+  --vibe-text-sub: #475569;
+  --vibe-text-muted: #94a3b8;
+  --vibe-accent-1: #15803d;
+  --vibe-accent-1-lt: #f0fdf4;
+  --vibe-accent-2: #f59e0b;
+  --vibe-accent-2-lt: #fffbeb;
+  --vibe-success: #16a34a;
+  --vibe-warning: #eab308;
+  --vibe-error: #dc2626;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+  --vibe-font-main: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --vibe-font-head: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --vibe-font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --vibe-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @theme inline {

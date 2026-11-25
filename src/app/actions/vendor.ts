@@ -39,14 +39,15 @@ export async function registerVendor(formData: FormData) {
 
     const doc: any = {
       _type: 'vendor',
-      _id: `drafts.${Math.random().toString(36).substr(2, 9)}`, // Create as DRAFT
       name,
       slug: { _type: 'slug', current: slug },
       phone,
+      pin: '123456',
       address,
       description,
       businessType,
-      isVerified: false, // Default pending
+      isOpen: true,
+      isVerified: false, // Default pending verification in /admin
     }
 
     if (logoAssetId) {
@@ -60,6 +61,21 @@ export async function registerVendor(formData: FormData) {
     }
 
     const result = await writeClient.create(doc)
+
+    // Kirim notifikasi WA ke Admin Pusat bahwa ada pendaftaran UMKM baru
+    try {
+      const { APP_SETTINGS_QUERY } = await import('@/sanity/lib/queries')
+      const { sendWhatsAppNotification } = await import('@/sanity/lib/whatsapp')
+      const settings = await writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' })
+      const adminPhone = settings?.adminPhone || '+62895325586281'
+      await sendWhatsAppNotification(
+        adminPhone,
+        `*PAWON PONDOKREJO - PENDAFTARAN UMKM BARU*\n--------------------------------\nNama Usaha : ${name}\nWhatsApp   : ${phone}\nJenis      : ${businessType === 'service' ? 'Jasa & Layanan' : 'Produk Barang'}\nAlamat     : ${address || '-'}\n\nSilakan buka menu Mitra & Warga pada Pusat Kendali Admin untuk verifikasi toko ini.`
+      )
+    } catch (waErr) {
+      console.warn('WA notification for new vendor skipped:', waErr)
+    }
+
     return { success: true, vendorId: result._id }
   } catch (error: any) {
     console.error('Vendor registration failed (FULL ERROR):', error)

@@ -165,6 +165,54 @@ export const orderType = defineType({
       type: 'string',
       hidden: true,
     }),
+    defineField({
+      name: 'autoResolutionReason',
+      title: 'Catatan Penutupan SOP Otomatis',
+      type: 'string',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'courierOfferedAt',
+      title: 'Waktu Penawaran ke Kurir Saat Ini',
+      type: 'datetime',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'rejectedCourierIds',
+      title: 'Daftar Kurir yang Melewati / Menolak',
+      type: 'array',
+      of: [{ type: 'string' }],
+      readOnly: true,
+    }),
   ],
+  preview: {
+    select: {
+      orderNumber: 'orderNumber',
+      customerName: 'customerName',
+      totalAmount: 'totalAmount',
+      paymentMethod: 'paymentMethod',
+      paymentStatus: 'paymentStatus',
+      status: 'status',
+    },
+    prepare({
+      orderNumber,
+      customerName,
+      totalAmount,
+      paymentMethod,
+      paymentStatus,
+      status,
+    }) {
+      const payLabel =
+        paymentMethod === 'qris'
+          ? paymentStatus === 'paid'
+            ? 'QRIS LUNAS'
+            : 'QRIS UNPAID'
+          : 'COD'
+      return {
+        title: `${orderNumber || 'ORD'} - ${customerName || 'Warga'}`,
+        subtitle: `Rp ${(totalAmount || 0).toLocaleString('id-ID')} • ${payLabel} • ${status || 'pending'}`,
+      }
+    },
+  },
 })
 

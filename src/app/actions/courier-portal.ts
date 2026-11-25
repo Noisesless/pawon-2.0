@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from 'next-sanity'
+import { getPhoneLookupVariants } from '@/lib/actionToken'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -11,25 +12,27 @@ const writeClient = createClient({
 })
 
 /**
- * Mencari kurir berdasarkan nomor WhatsApp dan PIN untuk keperluan login portal.
+ * Mencari kurir berdasarkan nomor WhatsApp (08 / 628 / +628) dan PIN untuk login portal.
  */
 export async function getCourierByPhone(phone: string, pin: string) {
   try {
-    const query = `*[_type == "courier" && phone == $phone][0]{
+    const variants = getPhoneLookupVariants(phone)
+    const query = `*[_type == "courier" && !(_id in path("drafts.**")) && phone in $variants][0]{
       _id,
       name,
       phone,
       pin,
       isActive,
+      status,
       statusMessage
     }`
-    const courier = await writeClient.fetch(query, { phone })
-    
+    const courier = await writeClient.fetch(query, { variants }, { cache: 'no-store' })
+
     if (!courier) {
       return { success: false, error: 'Nomor WhatsApp tidak terdaftar sebagai kurir.' }
     }
 
-    if (courier.pin !== pin) {
+    if (courier.pin !== pin.trim()) {
       return { success: false, error: 'PIN yang Anda masukkan salah.' }
     }
 
@@ -44,15 +47,22 @@ export async function getCourierByPhone(phone: string, pin: string) {
 /**
  * Update status operasional kurir
  */
-export async function updateCourierStatus(courierId: string, data: { isActive: boolean, statusMessage?: string }) {
+export async function updateCourierStatus(
+  courierId: string,
+  data: { isActive: boolean; statusMessage?: string }
+) {
   try {
+    const cleanId = courierId.replace(/^drafts\./, '')
     await writeClient
-      .patch(courierId)
+      .patch(cleanId)
       .set({
         isActive: data.isActive,
-        statusMessage: data.statusMessage || ''
+        status: data.isActive ? 'active' : 'inactive',
+        statusMessage: data.statusMessage || '',
       })
       .commit()
+
+    await writeClient.delete(`drafts.${cleanId}`).catch(() => {})
 
     return { success: true }
   } catch (error) {
@@ -62,21 +72,32 @@ export async function updateCourierStatus(courierId: string, data: { isActive: b
 }
 
 /**
- * Mengambil daftar pesanan yang ditugaskan ke kurir ini
+ * Mengambil daftar pesanan aktif yang ditugaskan ke kurir ini
  */
 export async function getCourierOrders(courierId: string) {
   try {
-    const query = `*[_type == "order" && courier._ref == $courierId && status != "completed" && status != "cancelled"] | order(_createdAt desc) {
+    const cleanId = courierId.replace(/^drafts\./, '')
+    const query = `*[_type == "order" && !(_id in path("drafts.**")) && courier._ref == $courierId && status != "completed" && status != "cancelled"] | order(_createdAt desc) {
       _id,
       orderNumber,
       customerName,
       customerPhone,
       deliveryAddress,
       totalAmount,
+      paymentMethod,
+      paymentStatus,
       status,
-      _createdAt
+      courierOfferedAt,
+      _createdAt,
+      items[]{
+        quantity,
+        "product": product->{
+          name,
+          "vendorName": vendor->name
+        }
+      }
     }`
-    const orders = await writeClient.fetch(query, { courierId })
+    const orders = await writeClient.fetch(query, { courierId: cleanId }, { cache: 'no-store' })
     return { success: true, data: orders }
   } catch (error) {
     console.error('Fetch courier orders failed:', error)

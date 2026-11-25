@@ -37,13 +37,15 @@ export default async function MobileIncubatorDetailPage({ params }: Props) {
   const { data: service } = await sanityFetch({
     query: INCUBATOR_SERVICE_BY_SLUG_QUERY,
     params: { slug },
-  }) as { data: IncubatorService | null };
+  }) as { data: (IncubatorService & { adminPhone?: string }) | null };
 
   if (!service) {
     notFound();
   }
 
   const Icon = iconMap[service.iconName] || Globe;
+  const rawPhone = (service.adminPhone || "+62895325586281").replace(/\D/g, "");
+  const waAdminPhone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone;
 
   return (
     <div className="flex flex-col min-h-screen bg-white">
@@ -96,7 +98,7 @@ export default async function MobileIncubatorDetailPage({ params }: Props) {
               <h3 className="text-xl font-black mb-2">Punya Pertanyaan?</h3>
               <p className="text-slate-400 text-xs mb-6 leading-relaxed">Tim Inkubator kami siap mendiskusikan rencana pengembangan bisnis Anda.</p>
               <a 
-                href={`https://wa.me/081234567890?text=Halo, saya ingin bertanya tentang layanan Inkubator: ${service.title}`}
+                href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin bertanya tentang layanan Inkubator: ${service.title}`}
                 className="inline-flex items-center gap-2 text-green-400 font-black text-sm"
               >
                 <MessageCircle className="w-5 h-5" />
@@ -110,7 +112,7 @@ export default async function MobileIncubatorDetailPage({ params }: Props) {
 
       <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 p-6 z-50 pb-10 shadow-[0_-20px_40px_rgba(0,0,0,0.05)]">
         <a
-          href={`https://wa.me/081234567890?text=Halo, saya ingin mendaftar program Inkubator: ${service.title}`}
+          href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin mendaftar program Inkubator: ${service.title}`}
           target="_blank"
           rel="noopener noreferrer"
           className="w-full bg-green-600 text-white text-center font-black py-5 rounded-[2rem] shadow-xl shadow-green-600/30 active:scale-95 transition-all flex items-center justify-center gap-3"

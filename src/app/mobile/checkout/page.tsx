@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { useCart } from '@/context/CartContext'
-import { createOrder } from '@/app/actions/order'
+import { createOrder, getPublicPaymentSettings } from '@/app/actions/order'
 import { getOrCreateCustomer, getCustomerById } from '@/app/actions/customer'
 import { useRouter } from 'next/navigation'
 import { Loader2, CheckCircle, ChevronLeft, User, Info, ShoppingBag, MessageCircle } from 'lucide-react'
 import { OrderFormData } from '@/types'
 import Link from 'next/link'
+import DynamicQrisCard from '@/components/DynamicQrisCard'
+import { DEFAULT_PAWON_STATIC_QRIS } from '@/lib/qrisEngine'
 
 export default function MobileCheckoutPage() {
   const { items, totalPrice, shippingFee, grandTotal, clearCart } = useCart()
@@ -23,20 +25,41 @@ export default function MobileCheckoutPage() {
     paymentMethod: 'cod',
   })
 
-  // Load existing profile
+  const [qrisConfig, setQrisConfig] = useState({
+    isQrisEnabled: true,
+    qrisMerchantName: 'PAWON PONDOKREJO',
+    qrisNmid: 'ID1026574925990',
+    qrisStaticPayload: DEFAULT_PAWON_STATIC_QRIS,
+    isUsingDemoPayload: true,
+  })
+
+  // Load existing profile & dynamic QRIS settings
   useEffect(() => {
     const savedId = localStorage.getItem('pawon-customerId')
     if (savedId) {
       getCustomerById(savedId).then((res) => {
         if (res.success && res.data) {
-          setFormData({
+          setFormData((prev) => ({
+            ...prev,
             name: res.data.name,
             phone: res.data.phone,
-            address: res.data.address
-          })
+            address: res.data.address,
+          }))
         }
       })
     }
+
+    getPublicPaymentSettings().then((res) => {
+      if (res.success && res.data) {
+        setQrisConfig({
+          isQrisEnabled: res.data.isQrisEnabled,
+          qrisMerchantName: res.data.qrisMerchantName,
+          qrisNmid: res.data.qrisNmid,
+          qrisStaticPayload: res.data.qrisStaticPayload,
+          isUsingDemoPayload: res.data.isUsingDemoPayload,
+        })
+      }
+    })
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -202,28 +225,24 @@ export default function MobileCheckoutPage() {
               </button>
               <button
                 type="button"
+                disabled={!qrisConfig.isQrisEnabled}
                 onClick={() => setFormData({ ...formData, paymentMethod: 'qris' })}
-                className={`p-4 rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${formData.paymentMethod === 'qris' ? 'border-green-600 bg-green-50 text-green-700' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                className={`p-4 rounded-[2rem] border-2 transition-all flex flex-col items-center justify-center gap-2 ${formData.paymentMethod === 'qris' ? 'border-green-600 bg-green-50 text-green-700' : 'border-transparent bg-slate-50 text-slate-600 hover:bg-slate-100'} ${!qrisConfig.isQrisEnabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <span className="font-black text-sm">QRIS</span>
-                <span className="text-[10px] font-bold opacity-70">Transfer / E-Wallet</span>
+                <span className="text-[10px] font-bold opacity-70">
+                  {qrisConfig.isQrisEnabled ? 'Transfer / E-Wallet' : 'Segera Hadir'}
+                </span>
               </button>
             </div>
             {formData.paymentMethod === 'qris' && (
-              <div className="mt-6 bg-slate-50 rounded-[2.5rem] p-6 text-center">
-                <h3 className="font-black text-slate-900 mb-4 text-sm">Scan QRIS Berikut:</h3>
-                <div className="bg-white p-4 rounded-3xl border border-slate-100 inline-block shadow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/qris.webp" alt="QRIS Desa Pondokrejo" className="w-40 h-40 object-contain mx-auto" />
-                </div>
-                <p className="text-xs font-bold text-slate-500 mt-4">
-                  a.n. <strong className="text-slate-700">Desa Pondokrejo</strong>
-                </p>
-                <div className="mt-4 p-3 bg-yellow-50 rounded-2xl text-left border border-yellow-100">
-                  <p className="text-[11px] font-bold text-yellow-800 leading-relaxed">
-                    Pastikan Anda telah berhasil mentransfer sesuai Total Bayar, lalu klik tombol di bawah untuk konfirmasi pesanan.
-                  </p>
-                </div>
+              <div className="mt-6">
+                <DynamicQrisCard
+                  amount={grandTotal}
+                  merchantName={qrisConfig.qrisMerchantName}
+                  nmid={qrisConfig.qrisNmid}
+                  staticPayload={qrisConfig.qrisStaticPayload}
+                />
               </div>
             )}
             {formData.paymentMethod === 'cod' && (

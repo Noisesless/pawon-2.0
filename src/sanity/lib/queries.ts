@@ -279,22 +279,47 @@ export const INCUBATOR_SERVICE_BY_SLUG_QUERY = defineQuery(`
     "slug": slug.current,
     description,
     iconName,
-    order
+    order,
+    "adminPhone": coalesce(
+      *[_type == "appSettings"] | order(_updatedAt desc)[0].adminPhone,
+      "+62895325586281"
+    )
   }
 `)
 
 export const INCUBATOR_SETTINGS_QUERY = defineQuery(`
-  *[_type == "article" && title == "Aset Visual Inkubator UMKM"][0] {
-    image
+  {
+    "image": coalesce(
+      *[_type == "incubatorSettings"] | order(_updatedAt desc)[0].heroImage,
+      *[_type == "article" && title == "Aset Visual Inkubator UMKM"][0].image
+    ),
+    "heroTitle": *[_type == "incubatorSettings"] | order(_updatedAt desc)[0].heroTitle,
+    "adminPhone": coalesce(
+      *[_type == "appSettings"] | order(_updatedAt desc)[0].adminPhone,
+      "+62895325586281"
+    )
   }
 `)
 
 export const APP_SETTINGS_QUERY = defineQuery(`
-  *[_type == "appSettings"][0] {
+  *[_type == "appSettings"] | order(_updatedAt desc)[0] {
+    _id,
     adminPhone,
+    adminPin,
     defaultShippingFee,
     siteName,
-    isMaintenance
+    isMaintenance,
+    isQrisEnabled,
+    qrisMerchantName,
+    qrisNmid,
+    qrisStaticPayload,
+    isSopAutoEnabled,
+    sopPendingCancelHours,
+    sopStuckWarningHours,
+    sopDeliveredCompleteHours,
+    sopProcessingCancelHours,
+    sopCourierTimeoutMinutes,
+    sopLastRunAt
   }
 `)
 
@@ -302,11 +327,22 @@ export const ORDER_BY_NUMBER_QUERY = defineQuery(`
   *[_type == "order" && orderNumber == $orderNumber][0] {
     _id,
     orderNumber,
+    orderCategory,
+    serviceDate,
     customerName,
     status,
     totalAmount,
+    shippingFee,
+    paymentMethod,
+    paymentStatus,
     deliveryAddress,
+    autoResolutionReason,
     _createdAt,
+    "serviceItem": serviceItem->{
+      name,
+      price,
+      priceType
+    },
     "items": items[] {
       _key,
       quantity,

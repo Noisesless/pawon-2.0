@@ -105,18 +105,6 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl mb-8 border border-white/10">
-                <p className="text-[10px] text-slate-300 font-bold uppercase tracking-widest mb-1 leading-relaxed">
-                  Metode Pembayaran
-                </p>
-                <div className="flex items-center gap-2 text-green-400">
-                  <div className="bg-green-500/20 p-1.5 rounded-lg">
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z"></path><path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd"></path></svg>
-                  </div>
-                  <span className="font-black text-sm">CASH ON DELIVERY (COD)</span>
-                </div>
-              </div>
-
               <Link href="/checkout" className="block w-full bg-green-600 text-white text-center font-black py-5 rounded-2xl hover:bg-green-500 transition-all shadow-xl shadow-green-600/20 hover:scale-[1.02] active:scale-95">
                 Checkout Pesanan
               </Link>

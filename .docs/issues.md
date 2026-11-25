@@ -37,6 +37,41 @@ Dokumen ini mencatat daftar isu teknis aktif (OPEN) serta riwayat masalah yang t
 
 ---
 
+### [ISS-005] Celah Tombol Aksi pada Portal Kurir (`/kurir`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/app/kurir/_components/CourierDashboard.tsx`
+- **Solusi**: Ditambahkan tombol `Terima Order` / `Tolak Order` saat status `processing`, `Barang Diambil` / `Mulai Antar` saat `accepted`, dan `Barang Diserahkan` (`delivered`) terpisah sebelum selesai; emoji UI diganti `lucide-react`.
+
+### [ISS-006] Tombol Konfirmasi Terima Pembeli Hilang Saat Status `delivered` (`/track`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/app/track/[orderNumber]/page.tsx`, `src/app/mobile/track/[orderNumber]/page.tsx`
+- **Solusi**: Menyertakan `delivered` pada render `CompleteOrderButton` di desktop & mobile, menyamakan seluruh mapping status mobile/desktop, dan menghapus seluruh emoji pada timeline desktop diganti `lucide-react`.
+
+### [ISS-007] Portal Penjual (`/lapak`) Belum Memiliki Daftar Pesanan Masuk
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/app/lapak/_components/VendorDashboard.tsx`, `src/app/actions/vendor-portal.ts`
+- **Solusi**: Ditambahkan tab `Pesanan` di `/lapak` dengan action `getVendorOrders` & `vendorOrderTransition` (tombol *Siap Diambil Kurir* / *Batalkan*).
+
+### [ISS-008] Login Portal `/lapak` & `/kurir` Sensitif Format Nomor (`08...` vs `628...`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/app/actions/vendor-portal.ts`, `src/app/actions/courier-portal.ts`, `src/lib/actionToken.ts`
+- **Solusi**: Pencocokan login kini memakai `getPhoneLookupVariants(phone)` (`phone in $variants`) untuk `08...`, `628...`, dan `+628...`.
+
+### [ISS-009] Notifikasi & Keamanan Magic Link WA (`accepted`/`shipped` & `NEXT_PUBLIC_BASE_URL`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/app/actions/order.ts`, `src/app/order/[orderNumber]/action/page.tsx`, `src/lib/actionToken.ts`
+- **Solusi**: Ditambahkan validasi HMAC token `k` pada link aksi, resolver URL berbasis header host pada mode dev LAN, notifikasi penuh untuk tiap transisi status, serta pengurangan `product.stock` otomatis saat `completed`.
+
+### [ISS-010] Arsitektur WA Bersih, Round-Robin Kurir + Auto-Skip Timeout, & Hybrid COD/QRIS
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/sanity/lib/whatsapp.ts`, `src/lib/courierAssigner.ts`, `src/app/actions/order.ts`, `src/lib/orderSopEngine.ts`, `src/instrumentation.ts`
+- **Solusi**:
+  1. Seluruh pesan WA terpusat di `whatsapp.ts` tanpa emoji mentah maupun istilah teknis/database/production.
+  2. Checkout COD 100% otomatis (WA Admin log-only 0 link); QRIS memakai verifikasi mutasi 1-klik Admin sebelum diteruskan otomatis.
+  3. Kurir memakai Round-Robin (`courier.lastAssignedAt`), tombol WA `Terima Order` / `Tolak Order`, serta auto-skip otomatis via `courierOfferedAt` + `sopCourierTimeoutMinutes` (`runCourierTimeoutCheck()` setiap 1 menit di production).
+
+---
+
 ## 🔵 RESOLVED ISSUES (Terselesaikan)
 
 ### [RES-001] Pemilihan Port Development Kompatibel Sanity CORS

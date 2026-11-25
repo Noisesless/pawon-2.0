@@ -3,7 +3,19 @@
 import { useState, useEffect } from 'react'
 import { updateCourierStatus, getCourierOrders } from '@/app/actions/courier-portal'
 import { updateOrderStatus } from '@/app/actions/order'
-import { LogOut, Power, MessageSquare, CheckCircle2, Loader2, MapPin, Phone, Package, Clock, ExternalLink } from 'lucide-react'
+import {
+  LogOut,
+  Power,
+  CheckCircle2,
+  Loader2,
+  MapPin,
+  Phone,
+  Package,
+  Clock,
+  Truck,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react'
 
 interface Props {
   initialData: any
@@ -41,9 +53,14 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
 
   const quickUpdateOrder = async (orderNumber: string, status: string, label: string) => {
     if (!confirm(`Konfirmasi: ${label}?`)) return
-    const res = await updateOrderStatus(orderNumber, status, `Update oleh Kurir via Portal`)
+    const res = await updateOrderStatus(
+      orderNumber,
+      status,
+      `Diperbarui oleh Kurir (${initialData.name}) melalui portal`,
+      initialData._id
+    )
     if (res.success) fetchOrders()
-    else alert('Gagal memperbarui pesanan.')
+    else alert(res.error || 'Gagal memperbarui pesanan.')
   }
 
   return (
@@ -139,42 +156,137 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
                     </div>
                     <div className="flex items-center gap-3 text-sm text-slate-500 font-bold">
                       <Clock className="w-4 h-4 text-slate-300 flex-shrink-0" />
-                      <span>Tagihan: <span className="text-slate-900">Rp{order.totalAmount.toLocaleString('id-ID')}</span> (COD)</span>
+                      {order.paymentMethod === 'qris' ? (
+                        <span>
+                          Tagihan:{' '}
+                          <span className="text-green-700 font-black">
+                            LUNAS VIA QRIS (Rp 0 - Jangan Tagih Tunai)
+                          </span>
+                        </span>
+                      ) : (
+                        <span>
+                          Tagihan COD:{' '}
+                          <span className="text-slate-900">
+                            Rp{order.totalAmount.toLocaleString('id-ID')}
+                          </span>{' '}
+                          (Tagih Tunai)
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
+                    {order.status === 'processing' && (
+                      <>
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'accepted',
+                              'Kurir menerima tugas dan menuju penjual'
+                            )
+                          }
+                          className="py-4 bg-green-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Terima Order</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'reject',
+                              'Kurir menolak tugas pengantaran'
+                            )
+                          }
+                          className="py-4 bg-red-50 text-red-600 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Tolak Order</span>
+                        </button>
+                      </>
+                    )}
                     {order.status === 'accepted' && (
-                      <button 
-                        onClick={() => quickUpdateOrder(order.orderNumber, 'shipped', 'Ambil barang dari Seller')}
-                        className="col-span-2 py-4 bg-orange-50 text-orange-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all"
-                      >
-                        📦 Barang Diambil
-                      </button>
+                      <>
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'shipped',
+                              'Barang diambil kurir dari penjual'
+                            )
+                          }
+                          className="py-4 bg-orange-50 text-orange-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Package className="w-4 h-4" />
+                          <span>Barang Diambil</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'delivering',
+                              'Kurir mulai mengantar ke pembeli'
+                            )
+                          }
+                          className="py-4 bg-purple-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Truck className="w-4 h-4" />
+                          <span>Mulai Antar</span>
+                        </button>
+                      </>
                     )}
                     {order.status === 'shipped' && (
-                      <button 
-                        onClick={() => quickUpdateOrder(order.orderNumber, 'delivering', 'Mulai pengiriman ke warga')}
-                        className="col-span-2 py-4 bg-purple-50 text-purple-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all"
+                      <button
+                        onClick={() =>
+                          quickUpdateOrder(
+                            order.orderNumber,
+                            'delivering',
+                            'Mulai pengiriman ke warga'
+                          )
+                        }
+                        className="col-span-2 py-4 bg-purple-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
-                        🚚 Mulai Kirim
+                        <Truck className="w-4 h-4" />
+                        <span>Mulai Antar ke Pembeli</span>
                       </button>
                     )}
                     {order.status === 'delivering' && (
                       <>
-                        <button 
-                          onClick={() => quickUpdateOrder(order.orderNumber, 'completed', 'Pesanan diterima warga & uang COD diterima')}
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'delivered',
+                              order.paymentMethod === 'qris'
+                                ? 'Barang diserahkan ke warga (Sudah lunas QRIS)'
+                                : 'Barang diserahkan ke warga & pembayaran COD diterima'
+                            )
+                          }
                           className="py-4 bg-green-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
                         >
-                          ✅ Selesai
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Barang Diserahkan</span>
                         </button>
-                        <button 
-                          onClick={() => quickUpdateOrder(order.orderNumber, 'problem', 'Lapor masalah di lapangan')}
-                          className="py-4 bg-rose-50 text-rose-600 font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 transition-all"
+                        <button
+                          onClick={() =>
+                            quickUpdateOrder(
+                              order.orderNumber,
+                              'problem',
+                              'Kendala pengantaran di lapangan'
+                            )
+                          }
+                          className="py-4 bg-rose-50 text-rose-600 font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
                         >
-                          ⚠️ Masalah
+                          <AlertTriangle className="w-4 h-4" />
+                          <span>Kendala</span>
                         </button>
                       </>
+                    )}
+                    {order.status === 'delivered' && (
+                      <div className="col-span-2 py-3 px-4 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-2xl text-center">
+                        Barang sudah diserahkan. Menunggu konfirmasi diterima dari pembeli.
+                      </div>
                     )}
                   </div>
                 </div>

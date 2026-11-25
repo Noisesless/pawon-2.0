@@ -4,7 +4,8 @@ import { createOrder } from './order'
 // Mock next-sanity
 vi.mock('next-sanity', () => ({
   createClient: () => ({
-    create: vi.fn().mockResolvedValue({ _id: 'mock-order-id' })
+    create: vi.fn().mockResolvedValue({ _id: 'mock-order-id' }),
+    fetch: vi.fn().mockResolvedValue([]),
   }),
   defineQuery: (q: string) => q
 }))

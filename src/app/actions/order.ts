@@ -1,10 +1,26 @@
 'use server'
 
 import { createClient } from 'next-sanity'
+import { headers } from 'next/headers'
 import { OrderFormData } from '@/types'
 import { CartItem } from '@/context/CartContext'
-import { formatOrderMessage, sendWhatsAppNotification } from '@/sanity/lib/whatsapp'
+import {
+  formatOrderMessage,
+  sendWhatsAppNotification,
+  buildAdminCodLogMessage,
+  buildAdminQrisVerifyMessage,
+  buildAdminProgressLogMessage,
+  buildSellerOrderMessage,
+  buildCourierOfferMessage,
+  buildCourierNextStepMessage,
+  buildBuyerStatusMessage,
+  getStatusLabelId,
+  WaItemSummary,
+} from '@/sanity/lib/whatsapp'
 import { APP_SETTINGS_QUERY } from '@/sanity/lib/queries'
+import { DEFAULT_PAWON_STATIC_QRIS, parseQRIS, validateCRC16 } from '@/lib/qrisEngine'
+import { verifyOrderActionToken, normalizePhoneTo62 } from '@/lib/actionToken'
+import { pickNextRoundRobinCourier } from '@/lib/courierAssigner'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -14,31 +30,165 @@ const writeClient = createClient({
   token: process.env.SANITY_API_WRITE_TOKEN,
 })
 
-export async function createOrder(formData: OrderFormData, items: CartItem[], totalAmount: number, shippingFee: number, customerId?: string) {
+/**
+ * Mengambil base URL aktif (mendukung fallback IP LAN saat testing di mode pengembangan lokal).
+ */
+async function resolveRuntimeBaseUrl(): Promise<string> {
+  const configured = (process.env.NEXT_PUBLIC_BASE_URL || '').trim()
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const h = await headers()
+      const host = h.get('x-forwarded-host') || h.get('host') || ''
+      const proto = h.get('x-forwarded-proto') || 'http'
+      if (host && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+        return `${proto}://${host}`
+      }
+    } catch {
+      // Di luar HTTP request context (misal saat unit test Vitest)
+    }
+  }
+  return configured || 'https://pawon.pondokrejo.id'
+}
+
+export async function getPublicPaymentSettings() {
   try {
-    // 0. Ambil Pengaturan Aplikasi (Nomor Admin, dll)
-    const settings = await writeClient.fetch(APP_SETTINGS_QUERY)
-    const adminPhone = settings?.adminPhone || '081328128315' // Fallback ke nomor awal jika belum diset
+    const settings = await writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' })
+    const rawPayload = settings?.qrisStaticPayload?.trim()
+    const hasValidCustomPayload = Boolean(rawPayload && validateCRC16(rawPayload))
+    const activeStaticPayload = hasValidCustomPayload ? rawPayload : DEFAULT_PAWON_STATIC_QRIS
+    const parsed = parseQRIS(activeStaticPayload)
 
-    // 1. Cek apakah ada vendor yang sedang tutup
-    const productIds = items.map(i => i._id)
-    const vendorsStatusQuery = `*[_type == "product" && _id in $productIds]{
-      name,
-      "vendor": vendor->{name, isOpen, closingMessage}
-    }`
-    const productsWithVendorStatus = await writeClient.fetch(vendorsStatusQuery, { productIds })
+    return {
+      success: true,
+      data: {
+        isQrisEnabled: settings?.isQrisEnabled !== false,
+        qrisMerchantName:
+          settings?.qrisMerchantName?.trim() ||
+          parsed.summary?.merchantName ||
+          'PAWON PONDOKREJO',
+        qrisNmid:
+          settings?.qrisNmid?.trim() ||
+          parsed.summary?.nmid ||
+          'ID1026574925990',
+        qrisStaticPayload: activeStaticPayload,
+        isUsingDemoPayload: !hasValidCustomPayload,
+        defaultShippingFee: settings?.defaultShippingFee ?? 5000,
+      },
+    }
+  } catch (err) {
+    console.warn('Fallback to default QRIS settings:', err)
+    return {
+      success: true,
+      data: {
+        isQrisEnabled: true,
+        qrisMerchantName: 'PAWON PONDOKREJO',
+        qrisNmid: 'ID1026574925990',
+        qrisStaticPayload: DEFAULT_PAWON_STATIC_QRIS,
+        isUsingDemoPayload: true,
+        defaultShippingFee: 5000,
+      },
+    }
+  }
+}
 
+/**
+ * Mengelompokkan item pesanan berdasarkan lapak penjual dan mengirim WA berisi item milik masing-masing toko.
+ */
+async function notifyVendorsGrouped(
+  baseUrl: string,
+  orderNumber: string,
+  customerName: string,
+  courierName: string | null,
+  rawItems: Array<{
+    name: string
+    quantity: number
+    vendorId?: string
+    vendorName?: string
+    vendorPhone?: string
+  }>,
+  adminFallbackPhone: string
+): Promise<string[]> {
+  const byVendor = new Map<
+    string,
+    { phone: string; vendorName: string; items: WaItemSummary[] }
+  >()
+
+  for (const it of rawItems) {
+    const cleanPhone = normalizePhoneTo62(it.vendorPhone || '')
+    const key = it.vendorId || cleanPhone || it.vendorName || 'umkm'
+    if (!byVendor.has(key)) {
+      byVendor.set(key, {
+        phone: cleanPhone,
+        vendorName: it.vendorName || 'Penjual UMKM',
+        items: [],
+      })
+    }
+    byVendor.get(key)!.items.push({
+      name: it.name,
+      quantity: it.quantity,
+      vendorName: it.vendorName,
+    })
+  }
+
+  const notifiedPhones = new Set<string>()
+  const sellerNames: string[] = []
+
+  for (const group of byVendor.values()) {
+    sellerNames.push(group.vendorName)
+    const msg = buildSellerOrderMessage({
+      baseUrl,
+      orderNumber,
+      customerName,
+      courierName,
+      items: group.items,
+    })
+    const targetPhone = group.phone || normalizePhoneTo62(adminFallbackPhone)
+    if (targetPhone && !notifiedPhones.has(targetPhone)) {
+      notifiedPhones.add(targetPhone)
+      await sendWhatsAppNotification(targetPhone, msg)
+    }
+  }
+
+  return Array.from(new Set(sellerNames))
+}
+
+export async function createOrder(
+  formData: OrderFormData,
+  items: CartItem[],
+  totalAmount: number,
+  shippingFee: number,
+  customerId?: string
+) {
+  try {
+    const settings = await writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' })
+    const adminPhone = settings?.adminPhone || '+62895325586281'
+
+    const productIds = items.map((i) => i._id)
+    const productsWithVendorStatus =
+      (await writeClient.fetch(
+        `*[_type == "product" && _id in $productIds]{
+          _id,
+          name,
+          stock,
+          "vendor": vendor->{_id, name, phone, isOpen, closingMessage}
+        }`,
+        { productIds },
+        { cache: 'no-store' }
+      )) || []
+
+    const productMetaById = new Map<string, any>()
     for (const p of productsWithVendorStatus) {
+      productMetaById.set(String(p._id).replace(/^drafts\./, ''), p)
       if (p.vendor?.isOpen === false) {
-        return { 
-          success: false, 
-          error: `Gagal membuat pesanan. Toko "${p.vendor.name}" (${p.name}) sedang tutup: ${p.vendor.closingMessage || 'Maaf, kami sedang tidak menerima pesanan.'}` 
+        return {
+          success: false,
+          error: `Gagal membuat pesanan. Toko "${p.vendor.name}" (${p.name}) sedang tutup: ${p.vendor.closingMessage || 'Maaf, kami sedang tidak menerima pesanan.'}`,
         }
       }
     }
 
     const publishDraft = async (id: string) => {
-      if (id.startsWith('drafts.')) {
+      if (id.startsWith('drafts.') && typeof writeClient.createOrReplace === 'function') {
         const draft = await writeClient.fetch(`*[_id == $id][0]`, { id })
         if (draft) {
           const publishedId = id.replace('drafts.', '')
@@ -52,17 +202,25 @@ export async function createOrder(formData: OrderFormData, items: CartItem[], to
     }
 
     const orderNumber = `ORD-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+    const resolvedItems = await Promise.all(
+      items.map(async (item) => ({
+        _key: Math.random().toString(36).substr(2, 9),
+        product: {
+          _type: 'reference',
+          _ref: await publishDraft(item._id),
+        },
+        quantity: item.quantity,
+        price: item.price,
+      }))
+    )
 
-    // Resolve items (publishing drafts if needed)
-    const resolvedItems = await Promise.all(items.map(async (item) => ({
-      _key: Math.random().toString(36).substr(2, 9),
-      product: {
-        _type: 'reference',
-        _ref: await publishDraft(item._id),
-      },
-      quantity: item.quantity,
-      price: item.price,
-    })))
+    const isQris = formData.paymentMethod === 'qris'
+    const nowIso = new Date().toISOString()
+
+    // Untuk COD: langsung cari kurir giliran Round-Robin tanpa campur tangan Admin
+    const roundRobinResult = !isQris
+      ? await pickNextRoundRobinCourier(writeClient, [])
+      : { courier: null, totalActiveCount: 0, remainingCount: 0 }
 
     const doc: any = {
       _type: 'order',
@@ -73,10 +231,19 @@ export async function createOrder(formData: OrderFormData, items: CartItem[], to
       deliveryAddress: formData.address,
       totalAmount,
       shippingFee,
-      paymentMethod: formData.paymentMethod || 'cod',
+      paymentMethod: isQris ? 'qris' : 'cod',
       paymentStatus: 'unpaid',
-      status: 'pending',
+      status: isQris ? 'pending' : 'processing',
       items: resolvedItems,
+      rejectedCourierIds: [],
+    }
+
+    if (!isQris && roundRobinResult.courier) {
+      doc.courier = {
+        _type: 'reference',
+        _ref: roundRobinResult.courier._id,
+      }
+      doc.courierOfferedAt = nowIso
     }
 
     if (customerId) {
@@ -87,69 +254,97 @@ export async function createOrder(formData: OrderFormData, items: CartItem[], to
     }
 
     const result = await writeClient.create(doc)
-    console.log('Order created in Sanity:', result._id)
 
-    // --- INTEGRASI FONNTE WHATSAPP ---
     if (result._id) {
-      console.log('Starting WhatsApp notifications...')
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://pawon.pondokrejo.id'
-      const isQris = formData.paymentMethod === 'qris'
-      
-      const waMessage = formatOrderMessage(
+      const baseUrl = await resolveRuntimeBaseUrl()
+      const baseOrderMessage = formatOrderMessage(
         orderNumber,
         formData.name,
         formData.phone,
         formData.address,
-        items.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+        items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price })),
         totalAmount - shippingFee,
         shippingFee,
-        totalAmount
+        totalAmount,
+        isQris ? 'qris' : 'cod'
       )
 
-      // 1. Kirim ke Admin
-      console.log('Sending to Admin:', adminPhone)
-      
-      const couriers = await writeClient.fetch(
-        `*[_type == "courier"]{_id, name, phone, isActive, status}`,
-        {},
-        { cache: 'no-store' }
-      )
-      let courierSelectionCod = ''
-      let courierSelectionQris = ''
-      
-      if (couriers && couriers.length > 0) {
-        couriers.filter((c: any) => c.isActive || c.status === 'active').forEach((c: any) => {
-          const safeName = encodeURIComponent(c.name)
-          const safePhone = encodeURIComponent(c.phone || '')
-          courierSelectionCod += `\n👤 Kirim tugas ke ${c.name}: ${baseUrl}/order/${orderNumber}/action?role=admin&status=processing_cod&courierId=${c._id}&courierPhone=${safePhone}&label=Kirim+Tugas+ke+${safeName}`
-          courierSelectionQris += `\n👤 Konfirmasi & Kirim ke ${c.name}: ${baseUrl}/order/${orderNumber}/action?role=admin&status=paid&courierId=${c._id}&courierPhone=${safePhone}&label=Konfirmasi+dan+Kirim+ke+${safeName}`
+      const enrichedItems = items.map((i) => {
+        const cleanProdId = i._id.replace(/^drafts\./, '')
+        const meta = productMetaById.get(cleanProdId)
+        return {
+          name: i.name,
+          quantity: i.quantity,
+          vendorId: meta?.vendor?._id,
+          vendorName: meta?.vendor?.name || i.vendorName,
+          vendorPhone: meta?.vendor?.phone,
+        }
+      })
+
+      if (isQris) {
+        // QRIS: Admin menerima 1 tautan verifikasi dana masuk (Penjual & Kurir menunggu lunas)
+        const adminQrisMsg = buildAdminQrisVerifyMessage({
+          baseUrl,
+          orderNumber,
+          baseMessage: baseOrderMessage,
+          totalAmount,
         })
-      } else {
-        courierSelectionCod = `\n✅ Konfirmasi Pesanan COD: ${baseUrl}/order/${orderNumber}/action?role=admin&status=processing_cod&label=Konfirmasi+Pesanan+COD`
-        courierSelectionQris = `\n✅ Konfirmasi Pembayaran: ${baseUrl}/order/${orderNumber}/action?role=admin&status=paid&label=Konfirmasi+Pembayaran+QRIS`
-      }
-
-      if (isQris) {
-        const adminQrisMsg = `${waMessage}\n\n*⚠️ PEMBAYARAN QRIS*\nPembeli menggunakan QRIS. Mohon cek mutasi rekening Anda sebesar *Rp${totalAmount.toLocaleString('id-ID')}*.\nJika dana sudah masuk, klik link kurir di bawah ini untuk mengonfirmasi dan mengirimkan tugas:\n${courierSelectionQris}`
         await sendWhatsAppNotification(adminPhone, adminQrisMsg)
-      } else {
-        const adminCodMsg = `${waMessage}\n\n*⚠️ PESANAN COD*\nPembeli menggunakan COD (Bayar di Tempat). Jika pesanan ini valid, klik link kurir di bawah ini untuk memproses dan meneruskannya ke Penjual & Kurir:\n${courierSelectionCod}`
-        await sendWhatsAppNotification(adminPhone, adminCodMsg)
-      }
 
-      // 2. Kirim ke Pembeli
-      console.log('Sending to Buyer:', formData.phone)
-      const buyerLinks = `\n\n*KONFIRMASI PENERIMAAN:*\n✅ Barang Diterima: ${baseUrl}/order/${orderNumber}/action?role=buyer&status=completed&label=Barang+Sudah+Diterima\n❌ Barang Bermasalah: ${baseUrl}/order/${orderNumber}/action?role=buyer&status=problem&label=Lapor+Barang+Bermasalah`
-      
-      const itemsList = items.map(i => `- ${i.name} (x${i.quantity})`).join('\n')
-      if (isQris) {
-        await sendWhatsAppNotification(formData.phone, `Halo *${formData.name}*,\n\nTerima kasih telah berbelanja di *PAWON Pondokrejo*. Pesanan Anda *${orderNumber}* telah kami terima.\n\n🛍️ *Barang Pesanan:*\n${itemsList}\n\nTotal: *Rp${totalAmount.toLocaleString('id-ID')}*\nMetode: *QRIS*\n\nAdmin Desa sedang memverifikasi pembayaran Anda. Kami akan segera memproses pesanan setelah pembayaran terkonfirmasi.`)
+        const buyerQrisMsg = buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: formData.name,
+          headline: 'MENUNGGU VERIFIKASI PEMBAYARAN QRIS',
+          body: `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan QRIS Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sedang diperiksa oleh Admin. Setelah pembayaran terverifikasi, pesanan otomatis diteruskan ke penjual dan kurir.`,
+          items: items.map((i) => ({ name: i.name, quantity: i.quantity })),
+        })
+        await sendWhatsAppNotification(formData.phone, buyerQrisMsg)
       } else {
-        await sendWhatsAppNotification(formData.phone, `Halo *${formData.name}*,\n\nTerima kasih telah berbelanja di *PAWON Pondokrejo*. Pesanan Anda *${orderNumber}* telah kami terima dan sedang diproses.\n\n🛍️ *Barang Pesanan:*\n${itemsList}\n\nTotal: *Rp${totalAmount.toLocaleString('id-ID')}*\nMetode: *COD*\n\nAdmin atau Kurir kami akan segera menghubungi Anda.`)
-      }
+        // COD: Otomatis penuh -> notif ke Penjual, Kurir giliran, Pembeli, dan WA Admin hanya Log
+        const sellerNames = await notifyVendorsGrouped(
+          baseUrl,
+          orderNumber,
+          formData.name,
+          roundRobinResult.courier?.name || null,
+          enrichedItems,
+          adminPhone
+        )
 
-      // 3 & 4. Seller & Courier will be notified LATER when Admin confirms the order.
-      // Removed immediate notifySellerAndCourier for COD.
+        const buyerCodMsg = buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: formData.name,
+          headline: 'PESANAN COD DITERIMA',
+          body: roundRobinResult.courier
+            ? `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan COD Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sudah diteruskan ke penjual dan kurir ${roundRobinResult.courier.name}.`
+            : `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan COD Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sudah diteruskan ke penjual untuk disiapkan.`,
+          items: items.map((i) => ({ name: i.name, quantity: i.quantity })),
+        })
+        await sendWhatsAppNotification(formData.phone, buyerCodMsg)
+
+        if (roundRobinResult.courier) {
+          const courierMsg = buildCourierOfferMessage({
+            baseUrl,
+            orderNumber,
+            courierId: roundRobinResult.courier._id,
+            courierName: roundRobinResult.courier.name,
+            customerName: formData.name,
+            deliveryAddress: formData.address,
+            paymentMethod: 'cod',
+            totalAmount,
+            items: enrichedItems,
+          })
+          await sendWhatsAppNotification(roundRobinResult.courier.phone, courierMsg)
+        }
+
+        const adminLogMsg = buildAdminCodLogMessage({
+          baseMessage: baseOrderMessage,
+          courierName: roundRobinResult.courier?.name || null,
+          sellerNames,
+        })
+        await sendWhatsAppNotification(adminPhone, adminLogMsg)
+      }
     }
 
     return { success: true, orderId: result._id, orderNumber }
@@ -157,242 +352,573 @@ export async function createOrder(formData: OrderFormData, items: CartItem[], to
     console.error('Order creation failed:', error)
     const detailMsg = error?.details?.description || error?.message || ''
     if (detailMsg.includes('Insufficient permissions') || !process.env.SANITY_API_WRITE_TOKEN) {
-      return { 
-        success: false, 
-        error: 'Gagal membuat pesanan: SANITY_API_WRITE_TOKEN belum disetel di .env.local atau tidak memiliki izin Write/Editor di Sanity.io.' 
+      return {
+        success: false,
+        error: 'Gagal membuat pesanan: izin penyimpanan data belum dikonfigurasi.',
       }
     }
     return { success: false, error: 'Gagal membuat pesanan: ' + (detailMsg || 'Terjadi kesalahan sistem.') }
   }
 }
 
-async function notifySellerAndCourier(orderNumber: string, customerName: string, deliveryAddress: string, items: {name: string, quantity: number, vendorName?: string}[], totalAmount: number, courierPhone: string = '6282241593592', sellerPhones: string[] = [], fallbackWarning: string = '', courierName: string = 'Kurir PAWON') {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://pawon.pondokrejo.id'
-  
-  // 3. Kirim ke Penjual
-  console.log('Sending to Seller(s)...', sellerPhones)
-  const sellerLinks = `\n\n*UPDATE STATUS PENJUAL:*\n📦 Serahkan ke Kurir: ${baseUrl}/order/${orderNumber}/action?role=seller&status=shipped&label=Serahkan+Barang+ke+Kurir\n⚠️ Ada Masalah: ${baseUrl}/order/${orderNumber}/action?role=seller&status=problem&label=Transaksi+Bermasalah`
-  const sellerMessage = `🔔 *PESANAN BARU UNTUK SELLER* 🔔\n\nHalo Seller,\nAda pesanan masuk yang perlu disiapkan segera.\n\n👤 *Pemesan:* ${customerName}\n🆔 *No. Pesanan:* ${orderNumber}\n🛵 *Kurir Pengambil:* ${courierName}\n\n🛍️ *Item yang dipesan:* \n${items.map(i => `- ${i.name} (x${i.quantity})`).join('\n')}${sellerLinks}`
-  
-  if (sellerPhones.length > 0) {
-    for (let phone of sellerPhones) {
-      // Ensure phone starts with 62 for Fonnte
-      let cleanPhone = phone.replace(/\D/g, '')
-      if (cleanPhone.startsWith('0')) cleanPhone = '62' + cleanPhone.substring(1)
-      await sendWhatsAppNotification(cleanPhone, sellerMessage)
-    }
-  } else {
-    // Fallback if no vendor phone found
-    await sendWhatsAppNotification('62895360396984', sellerMessage)
-  }
-
-  // 4. Kirim ke Kurir
-  let cleanCourierPhone = courierPhone.replace(/\D/g, '')
-  if (cleanCourierPhone.startsWith('0')) cleanCourierPhone = '62' + cleanCourierPhone.substring(1)
-  console.log('Sending to Courier...', cleanCourierPhone)
-
-  const courierLinks = `\n\n*UPDATE STATUS KURIR:*\n👍 Terima Order: ${baseUrl}/order/${orderNumber}/action?role=courier&status=accepted&label=Terima+Tugas+Pengantaran\n📦 Ambil dari Seller: ${baseUrl}/order/${orderNumber}/action?role=courier&status=shipped&label=Ambil+Barang+dari+Seller\n🚚 Mulai Kirim: ${baseUrl}/order/${orderNumber}/action?role=courier&status=delivering&label=Mulai+Pengiriman\n🏁 Barang Diserahkan: ${baseUrl}/order/${orderNumber}/action?role=courier&status=delivered&label=Barang+Telah+Diserahkan\n⚠️ Ada Masalah: ${baseUrl}/order/${orderNumber}/action?role=courier&status=problem&label=Lapor+Masalah+Pengiriman`
-  const courierMessage = `🚚 *TUGAS PENGANTARAN BARU* 🚚${fallbackWarning}\n\nHalo Kurir PAWON,\nAda tugas pengantaran baru.\n\n📍 *Alamat Tujuan:* ${deliveryAddress}\n👤 *Penerima:* ${customerName}\n🆔 *No. Pesanan:* ${orderNumber}\n💰 *Tagihan:* Rp${totalAmount.toLocaleString('id-ID')} (Cek apakah COD atau QRIS)\n\n🛍️ *Barang yang Harus Diambil:*\n${items.map(i => `- ${i.name} (x${i.quantity}) dari *${i.vendorName || 'Penjual'}*`).join('\n')}${courierLinks}`
-  await sendWhatsAppNotification(cleanCourierPhone, courierMessage)
-}
-
-export async function updateOrderStatus(orderNumber: string, newStatus: string, note?: string, courierId?: string, courierPhoneParam?: string) {
+export async function updateOrderStatus(
+  orderNumber: string,
+  newStatus: string,
+  note?: string,
+  courierId?: string,
+  courierPhoneParam?: string,
+  actionGuard?: { role: string; token?: string | null }
+) {
   try {
-    const query = `*[_type == "order" && orderNumber == $orderNumber][0]{
-      _id, customerName, customerPhone, deliveryAddress, totalAmount, paymentMethod, paymentStatus, status, courier->{phone, name},
-      items[]{ quantity, product->{name, vendor->{phone, name}} }
-    }`
-    const order = await writeClient.fetch(query, { orderNumber })
+    const [order, settings] = await Promise.all([
+      writeClient.fetch(
+        `*[_type == "order" && orderNumber == $orderNumber][0]{
+          _id, orderNumber, orderCategory, customerName, customerPhone, deliveryAddress,
+          totalAmount, shippingFee, paymentMethod, paymentStatus, status,
+          courierOfferedAt, rejectedCourierIds,
+          "customerId": customer._ref,
+          courier->{_id, phone, name},
+          items[]{
+            quantity,
+            price,
+            product->{
+              _id,
+              name,
+              stock,
+              vendor->{_id, phone, name}
+            }
+          }
+        }`,
+        { orderNumber },
+        { cache: 'no-store' }
+      ),
+      writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' }),
+    ])
 
+    const adminPhone = settings?.adminPhone || '+62895325586281'
     if (!order) {
       return { success: false, error: 'Pesanan tidak ditemukan.' }
     }
 
-    // Jika Admin menekan tombol Confirm Paid QRIS
-    if (newStatus === 'paid') {
-      if (order.paymentStatus === 'paid') return { success: false, error: 'Pesanan ini sudah dibayar sebelumnya.' }
-      
-      let patch = writeClient.patch(order._id).set({ paymentStatus: 'paid', status: 'processing' })
-      if (courierId) {
-        patch = patch.set({ courier: { _type: 'reference', _ref: courierId } })
-      }
-      await patch.commit()
-
-
-
-      // Dapatkan nomor kurir yang dipilih
-      let courierPhone = courierPhoneParam
-      let courierName = order.courier?.name || 'Kurir PAWON'
-      let fallbackWarning = ''
-      
-      if (courierId && (!courierPhoneParam || courierName === 'Kurir PAWON')) {
-        // Fetch tanpa cache agar data real-time
-        const allCouriers = await writeClient.fetch(`*[_type == "courier"]{_id, phone, name}`, {}, { cache: 'no-store' })
-        const matchedCourier = allCouriers.find((c: any) => c._id === courierId || c._id === `drafts.${courierId}` || `drafts.${c._id}` === courierId)
-        if (matchedCourier?.phone) {
-          courierPhone = matchedCourier.phone
-          if (matchedCourier?.name) courierName = matchedCourier.name
+    // Validasi token pengaman bila dipanggil dari tautan WA (/order/[orderNumber]/action)
+    if (actionGuard) {
+      const valid = verifyOrderActionToken(
+        actionGuard.token,
+        orderNumber,
+        actionGuard.role,
+        newStatus,
+        courierId
+      )
+      if (!valid) {
+        return {
+          success: false,
+          error: 'Tautan aksi tidak valid atau sudah tidak berlaku.',
         }
       }
-      
-      if (!courierPhone) {
-        courierPhone = '6282241593592'
-        fallbackWarning = `\n\n*(Sistem melempar tugas ini ke Septian karena gagal menemukan nomor HP kurir di URL WA atau Database Cache)*`
+    }
+
+    // Cegah perubahan status pesanan yang sudah selesai atau dibatalkan
+    if (
+      (order.status === 'completed' || order.status === 'cancelled') &&
+      newStatus !== 'admin_override'
+    ) {
+      return {
+        success: false,
+        error: `Pesanan ini sudah berstatus "${getStatusLabelId(order.status)}" dan tidak dapat diubah lagi.`,
+      }
+    }
+
+    const baseUrl = await resolveRuntimeBaseUrl()
+    const cleanItems: WaItemSummary[] = (order.items || []).map((i: any) => ({
+      name: i.product?.name || 'Produk',
+      quantity: i.quantity || 1,
+      vendorName: i.product?.vendor?.name,
+    }))
+    const itemsText = cleanItems.map((i) => `- ${i.name} (x${i.quantity})`).join('\n')
+
+    const enrichedForSeller = (order.items || []).map((i: any) => ({
+      name: i.product?.name || 'Produk',
+      quantity: i.quantity || 1,
+      vendorId: i.product?.vendor?._id,
+      vendorName: i.product?.vendor?.name,
+      vendorPhone: i.product?.vendor?.phone,
+    }))
+
+    // 1. Konfirmasi Pembayaran QRIS Masuk (atau konfirmasi manual COD via Admin) -> memicu Round-Robin
+    if (newStatus === 'paid' || newStatus === 'processing_cod') {
+      if (newStatus === 'paid' && order.paymentStatus === 'paid') {
+        return { success: false, error: 'Pembayaran QRIS pesanan ini sudah dikonfirmasi sebelumnya.' }
+      }
+      if (newStatus === 'processing_cod' && order.status !== 'pending') {
+        return { success: false, error: 'Pesanan COD ini sudah diproses sebelumnya.' }
       }
 
-      // Beri tahu pembeli bahwa pembayaran berhasil
-      const itemsList = (order.items || []).map((i: any) => `- ${i.product?.name || 'Produk'} (x${i.quantity})`).join('\n')
-      await sendWhatsAppNotification(order.customerPhone, `Halo *${order.customerName}*,\n\nPembayaran QRIS Anda untuk pesanan *${orderNumber}* sudah diterima oleh Admin Desa.\n\n🛍️ *Barang Pesanan:*\n${itemsList}\n\nBarang pesanan Anda saat ini sedang disiapkan oleh Penjual dan akan segera dikirim oleh *${courierName}* ke alamat Anda.`)
+      const excludedIds: string[] = Array.isArray(order.rejectedCourierIds)
+        ? order.rejectedCourierIds
+        : []
+      const rr = await pickNextRoundRobinCourier(writeClient, excludedIds, courierId)
+      const nowIso = new Date().toISOString()
 
-      // Kumpulkan nomor telepon penjual (uniques)
-      const sellerPhones = Array.from(new Set((order.items || [])
-        .map((i: any) => i.product?.vendor?.phone)
-        .filter(Boolean)
-      )) as string[]
+      const patchFields: Record<string, any> = {
+        status: 'processing',
+      }
+      if (newStatus === 'paid') {
+        patchFields.paymentStatus = 'paid'
+      }
+      if (rr.courier) {
+        patchFields.courier = { _type: 'reference', _ref: rr.courier._id }
+        patchFields.courierOfferedAt = nowIso
+      }
+      await writeClient.patch(order._id).set(patchFields).commit()
 
-      // Lanjutkan notifikasi ke Seller & Courier
-      await notifySellerAndCourier(
-        orderNumber, 
-        order.customerName, 
-        order.deliveryAddress, 
-        (order.items || []).map((i: any) => ({ name: i.product?.name || 'Produk', quantity: i.quantity, vendorName: i.product?.vendor?.name })), 
-        order.totalAmount,
-        courierPhone,
-        sellerPhones,
-        fallbackWarning,
-        courierName
+      // Notif Pembeli
+      const buyerMsg = buildBuyerStatusMessage({
+        baseUrl,
+        orderNumber,
+        customerName: order.customerName,
+        headline:
+          newStatus === 'paid'
+            ? 'PEMBAYARAN QRIS DIKONFIRMASI'
+            : 'PESANAN COD DIPROSES',
+        body: rr.courier
+          ? `${newStatus === 'paid' ? 'Pembayaran QRIS Anda sudah diterima.' : 'Pesanan COD Anda sudah dikonfirmasi.'} Barang sedang disiapkan penjual dan akan dikirim oleh ${rr.courier.name}.`
+          : `${newStatus === 'paid' ? 'Pembayaran QRIS Anda sudah diterima.' : 'Pesanan COD Anda sudah dikonfirmasi.'} Barang sedang disiapkan penjual.`,
+        items: cleanItems,
+      })
+      await sendWhatsAppNotification(order.customerPhone, buyerMsg)
+
+      // Notif Penjual per Toko
+      const sellerNames = await notifyVendorsGrouped(
+        baseUrl,
+        orderNumber,
+        order.customerName,
+        rr.courier?.name || null,
+        enrichedForSeller,
+        adminPhone
+      )
+
+      // Notif Kurir Giliran
+      if (rr.courier) {
+        const courierOffer = buildCourierOfferMessage({
+          baseUrl,
+          orderNumber,
+          courierId: rr.courier._id,
+          courierName: rr.courier.name,
+          customerName: order.customerName,
+          deliveryAddress: order.deliveryAddress,
+          paymentMethod: order.paymentMethod === 'qris' ? 'qris' : 'cod',
+          totalAmount: order.totalAmount || 0,
+          items: cleanItems,
+        })
+        await sendWhatsAppNotification(rr.courier.phone, courierOffer)
+      }
+
+      // Log WA ke Admin (tanpa link)
+      const adminLog = buildAdminProgressLogMessage({
+        orderNumber,
+        customerName: order.customerName,
+        stageLabel:
+          newStatus === 'paid'
+            ? 'Pembayaran QRIS Terverifikasi & Diteruskan Otomatis'
+            : 'Pesanan COD Diteruskan Otomatis',
+        detail: `Penjual: ${sellerNames.join(', ') || '-'}. Kurir giliran: ${rr.courier?.name || 'Belum ada kurir aktif'}.`,
+        itemsSummary: itemsText,
+      })
+      await sendWhatsAppNotification(adminPhone, adminLog)
+
+      return { success: true }
+    }
+
+    // 2. Kurir Menolak Order -> Catat penolakan & lempar otomatis ke kurir giliran berikutnya
+    if (newStatus === 'reject') {
+      if (['shipped', 'delivering', 'delivered'].includes(order.status)) {
+        return {
+          success: false,
+          error: 'Pesanan sudah dalam tahap pengantaran dan tidak bisa ditolak.',
+        }
+      }
+
+      const activeCourierId = order.courier?._id
+      const rejectingId = courierId || activeCourierId
+      if (activeCourierId && courierId && courierId !== activeCourierId) {
+        return {
+          success: false,
+          error: 'Penawaran tugas ini sudah dialihkan ke kurir lain.',
+        }
+      }
+
+      const prevRejected: string[] = Array.isArray(order.rejectedCourierIds)
+        ? order.rejectedCourierIds
+        : []
+      const nextRejected = rejectingId
+        ? Array.from(new Set([...prevRejected, rejectingId]))
+        : prevRejected
+
+      const rrNext = await pickNextRoundRobinCourier(writeClient, nextRejected)
+      const prevCourierName = order.courier?.name || 'Kurir sebelumnya'
+
+      if (rrNext.courier) {
+        const nowIso = new Date().toISOString()
+        await writeClient
+          .patch(order._id)
+          .set({
+            status: 'processing',
+            courier: { _type: 'reference', _ref: rrNext.courier._id },
+            courierOfferedAt: nowIso,
+            rejectedCourierIds: nextRejected,
+          })
+          .commit()
+
+        const nextOfferMsg = buildCourierOfferMessage({
+          baseUrl,
+          orderNumber,
+          courierId: rrNext.courier._id,
+          courierName: rrNext.courier.name,
+          customerName: order.customerName,
+          deliveryAddress: order.deliveryAddress,
+          paymentMethod: order.paymentMethod === 'qris' ? 'qris' : 'cod',
+          totalAmount: order.totalAmount || 0,
+          items: cleanItems,
+          notice: `Dialihkan dari ${prevCourierName} kepada Anda sesuai giliran berikutnya.`,
+        })
+        await sendWhatsAppNotification(rrNext.courier.phone, nextOfferMsg)
+
+        const adminLog = buildAdminProgressLogMessage({
+          orderNumber,
+          customerName: order.customerName,
+          stageLabel: 'Pengalihan Kurir Otomatis',
+          detail: `${prevCourierName} menolak tugas. Giliran dialihkan ke ${rrNext.courier.name}.`,
+        })
+        await sendWhatsAppNotification(adminPhone, adminLog)
+
+        return {
+          success: true,
+          message: `Tugas berhasil dialihkan ke kurir berikutnya (${rrNext.courier.name}).`,
+        }
+      }
+
+      // Semua kurir aktif menolak dalam 1 putaran
+      await writeClient
+        .patch(order._id)
+        .set({
+          courierOfferedAt: null,
+          rejectedCourierIds: nextRejected,
+        })
+        .unset(['courier'])
+        .commit()
+
+      const adminAlert = buildAdminProgressLogMessage({
+        orderNumber,
+        customerName: order.customerName,
+        stageLabel: 'Butuh Penugasan Kurir Manual',
+        detail: `${prevCourierName} menolak tugas dan seluruh kurir aktif sudah mendapat penawaran. Silakan atur kurir melalui Pusat Kendali Admin.`,
+        itemsSummary: itemsText,
+      })
+      await sendWhatsAppNotification(adminPhone, adminAlert)
+
+      return {
+        success: true,
+        message: 'Penolakan dicatat dan Admin telah diberi laporan untuk penugasan manual.',
+      }
+    }
+
+    // Validasi kepemilikan kurir bila aksi dilakukan lewat tautan WA kurir
+    if (
+      actionGuard?.role === 'courier' &&
+      courierId &&
+      order.courier?._id &&
+      courierId !== order.courier._id
+    ) {
+      return {
+        success: false,
+        error: 'Tugas pengantaran ini sudah dialihkan ke kurir lain.',
+      }
+    }
+
+    // 3. Kurir Menerima Order (Menuju Penjual)
+    if (newStatus === 'accepted') {
+      await writeClient
+        .patch(order._id)
+        .set({ status: 'accepted', courierOfferedAt: null })
+        .commit()
+
+      const activeCourierName = order.courier?.name || 'Kurir PAWON'
+      const activeCourierId = order.courier?._id || courierId || ''
+
+      // Kabari Kurir dengan langkah lanjutan (Ambil / Antar)
+      if (order.courier?.phone) {
+        const nextCourierMsg = buildCourierNextStepMessage({
+          baseUrl,
+          orderNumber,
+          courierId: activeCourierId,
+          courierName: activeCourierName,
+          stage: 'accepted',
+          customerName: order.customerName,
+          deliveryAddress: order.deliveryAddress,
+        })
+        await sendWhatsAppNotification(order.courier.phone, nextCourierMsg)
+      }
+
+      // Kabari Penjual agar bersiap diserahkan ke kurir
+      const sellerPhones = Array.from(
+        new Set(
+          enrichedForSeller
+            .map((i: any) => normalizePhoneTo62(i.vendorPhone || ''))
+            .filter(Boolean)
+        )
+      ) as string[]
+      for (const sPhone of sellerPhones) {
+        await sendWhatsAppNotification(
+          sPhone,
+          `*PAWON PONDOKREJO - INFO KURIR*\n--------------------------------\nNo. Pesanan : ${orderNumber}\nKurir       : ${activeCourierName}\n\nKurir telah menerima tugas dan sedang menuju lapak Anda untuk mengambil pesanan atas nama ${order.customerName}.`
+        )
+      }
+
+      await sendWhatsAppNotification(
+        adminPhone,
+        buildAdminProgressLogMessage({
+          orderNumber,
+          customerName: order.customerName,
+          stageLabel: 'Kurir Menerima Tugas',
+          detail: `${activeCourierName} menerima tugas dan sedang menjemput pesanan ke penjual.`,
+        })
       )
 
       return { success: true }
     }
 
-    // Jika Admin menekan tombol Confirm COD
-    if (newStatus === 'processing_cod') {
-      if (order.status !== 'pending') return { success: false, error: 'Pesanan ini sudah diproses sebelumnya.' }
-      
-      let patch = writeClient.patch(order._id).set({ status: 'processing' })
-      if (courierId) {
-        patch = patch.set({ courier: { _type: 'reference', _ref: courierId } })
-      }
-      await patch.commit()
+    // 4. Penjual Menyerahkan / Kurir Sudah Mengambil Barang
+    if (newStatus === 'shipped') {
+      await writeClient
+        .patch(order._id)
+        .set({ status: 'shipped', courierOfferedAt: null })
+        .commit()
 
+      const activeCourierName = order.courier?.name || 'Kurir PAWON'
+      const activeCourierId = order.courier?._id || courierId || ''
 
-
-      // Dapatkan nomor kurir yang dipilih
-      let courierPhone = courierPhoneParam
-      let courierName = order.courier?.name || 'Kurir PAWON'
-      let fallbackWarning = ''
-      
-      if (courierId && (!courierPhoneParam || courierName === 'Kurir PAWON')) {
-        // Fetch tanpa cache agar data real-time
-        const allCouriers = await writeClient.fetch(`*[_type == "courier"]{_id, phone, name}`, {}, { cache: 'no-store' })
-        const matchedCourier = allCouriers.find((c: any) => c._id === courierId || c._id === `drafts.${courierId}` || `drafts.${c._id}` === courierId)
-        if (matchedCourier?.phone) {
-          courierPhone = matchedCourier.phone
-          if (matchedCourier?.name) courierName = matchedCourier.name
-        }
-      }
-      
-      if (!courierPhone) {
-        courierPhone = '6282241593592'
-        fallbackWarning = `\n\n*(Sistem melempar tugas ini ke Septian karena gagal menemukan nomor HP kurir di URL WA atau Database Cache)*`
+      if (order.courier?.phone) {
+        const nextCourierMsg = buildCourierNextStepMessage({
+          baseUrl,
+          orderNumber,
+          courierId: activeCourierId,
+          courierName: activeCourierName,
+          stage: 'shipped',
+          customerName: order.customerName,
+          deliveryAddress: order.deliveryAddress,
+        })
+        await sendWhatsAppNotification(order.courier.phone, nextCourierMsg)
       }
 
-      // Beri tahu pembeli bahwa pesanan diproses
-      const itemsList = (order.items || []).map((i: any) => `- ${i.product?.name || 'Produk'} (x${i.quantity})`).join('\n')
-      await sendWhatsAppNotification(order.customerPhone, `Halo *${order.customerName}*,\n\nPesanan COD Anda (*${orderNumber}*) sudah dikonfirmasi oleh Admin Desa.\n\n🛍️ *Barang Pesanan:*\n${itemsList}\n\nBarang pesanan Anda saat ini sedang disiapkan oleh Penjual dan akan segera dikirim oleh *${courierName}* ke alamat Anda.`)
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'PESANAN SIAP DIANTAR',
+          body: `Barang pesanan Anda sudah siap dan diserahkan ke kurir (${activeCourierName}) untuk segera dikirim ke alamat Anda.`,
+          items: cleanItems,
+        })
+      )
 
-      // Kumpulkan nomor telepon penjual (uniques)
-      const sellerPhones = Array.from(new Set((order.items || [])
-        .map((i: any) => i.product?.vendor?.phone)
-        .filter(Boolean)
-      )) as string[]
-
-      // Lanjutkan notifikasi ke Seller & Courier
-      await notifySellerAndCourier(
-        orderNumber, 
-        order.customerName, 
-        order.deliveryAddress, 
-        (order.items || []).map((i: any) => ({ name: i.product?.name || 'Produk', quantity: i.quantity, vendorName: i.product?.vendor?.name })), 
-        order.totalAmount,
-        courierPhone,
-        sellerPhones,
-        '',
-        courierName
+      await sendWhatsAppNotification(
+        adminPhone,
+        buildAdminProgressLogMessage({
+          orderNumber,
+          customerName: order.customerName,
+          stageLabel: 'Barang Diserahkan ke Kurir',
+          detail: `${note || 'Barang telah disiapkan penjual dan berada di tangan kurir.'}`,
+        })
       )
 
       return { success: true }
     }
 
-    // Jika Kurir mulai mengirim
+    // 5. Kurir Mulai Mengantar ke Alamat Pembeli
     if (newStatus === 'delivering') {
       await writeClient
         .patch(order._id)
-        .set({ status: 'delivering' })
+        .set({ status: 'delivering', courierOfferedAt: null })
         .commit()
 
-      const courierName = order.courier?.name || 'Kurir PAWON'
-      const itemsList = (order.items || []).map((i: any) => `- ${i.product?.name || 'Produk'} (x${i.quantity})`).join('\n')
-      await sendWhatsAppNotification(order.customerPhone, `Halo *${order.customerName}*,\n\nPesanan Anda (*${orderNumber}*) saat ini *SEDANG DALAM PERJALANAN* menuju alamat Anda oleh *${courierName}*.\n\n🛍️ *Barang Pesanan:*\n${itemsList}\n\nHarap siapkan uang tunai sebesar *Rp${order.totalAmount.toLocaleString('id-ID')}* (jika menggunakan COD).\n\nKurir akan segera sampai dan menghubungi Anda.`)
+      const activeCourierName = order.courier?.name || 'Kurir PAWON'
+      const activeCourierId = order.courier?._id || courierId || ''
+      const paymentNotice =
+        order.paymentMethod === 'qris'
+          ? `Pembayaran pesanan ini SUDAH LUNAS VIA QRIS (Rp${order.totalAmount.toLocaleString('id-ID')}). Anda tidak perlu membayar tunai ke kurir.`
+          : `Harap siapkan uang tunai sebesar Rp${order.totalAmount.toLocaleString('id-ID')} untuk pembayaran COD.`
 
-      // Notifikasi ke Admin
-      const settings = await writeClient.fetch(APP_SETTINGS_QUERY)
-      const adminPhone = settings?.adminPhone || '081328128315'
-      await sendWhatsAppNotification(adminPhone, `🚚 *PESANAN DIKIRIM*\nPesanan ${orderNumber} sedang diantar oleh kurir ke pembeli.\n\n🛍️ *Item:*\n${itemsList}`)
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'KURIR MENUJU ALAMAT ANDA',
+          body: `Pesanan Anda sedang dalam perjalanan menuju alamat Anda bersama ${activeCourierName}. ${paymentNotice}`,
+          items: cleanItems,
+        })
+      )
+
+      if (order.courier?.phone) {
+        await sendWhatsAppNotification(
+          order.courier.phone,
+          buildCourierNextStepMessage({
+            baseUrl,
+            orderNumber,
+            courierId: activeCourierId,
+            courierName: activeCourierName,
+            stage: 'delivering',
+            customerName: order.customerName,
+            deliveryAddress: order.deliveryAddress,
+          })
+        )
+      }
+
+      await sendWhatsAppNotification(
+        adminPhone,
+        buildAdminProgressLogMessage({
+          orderNumber,
+          customerName: order.customerName,
+          stageLabel: 'Sedang Diantar Kurir',
+          detail: `${activeCourierName} sedang dalam perjalanan menuju alamat pembeli.`,
+          itemsSummary: itemsText,
+        })
+      )
 
       return { success: true }
     }
 
-    // Jika Kurir menyatakan barang telah diserahkan
+    // 6. Barang Sudah Diserahkan Kurir -> Tunggu Konfirmasi Pembeli
     if (newStatus === 'delivered') {
       await writeClient
         .patch(order._id)
-        .set({ status: 'delivered' })
+        .set({ status: 'delivered', courierOfferedAt: null })
         .commit()
 
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://pawon.pondokrejo.id'
-      const buyerLinks = `\n\n*KONFIRMASI PENERIMAAN:*\n✅ Barang Diterima: ${baseUrl}/order/${orderNumber}/action?role=buyer&status=completed&label=Barang+Sudah+Diterima\n❌ Barang Bermasalah: ${baseUrl}/order/${orderNumber}/action?role=buyer&status=problem&label=Lapor+Barang+Bermasalah`
-      await sendWhatsAppNotification(order.customerPhone, `Halo *${order.customerName}*,\n\nKurir kami melaporkan bahwa pesanan (*${orderNumber}*) *TELAH DISERAHKAN* kepada Anda.\n\nJika barang sudah Anda terima dengan baik, mohon **KLIK TOMBOL KONFIRMASI** di bawah ini agar kami dapat menutup transaksi:${buyerLinks}`)
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'PESANAN TELAH DISERAHKAN',
+          body: 'Kurir kami melaporkan bahwa pesanan Anda sudah diserahkan di alamat tujuan.',
+          items: cleanItems,
+          includeCompletionLinks: true,
+        })
+      )
 
-      // Mulai hitung mundur 5 menit untuk Admin
-      const settings = await writeClient.fetch(APP_SETTINGS_QUERY)
-      const adminPhone = settings?.adminPhone || '081328128315'
-      
-      setTimeout(async () => {
-        try {
-          const checkOrder = await writeClient.fetch(`*[_id == $id][0]{status}`, { id: order._id })
-          // Jika pembeli belum klik selesai (status masih delivered)
-          if (checkOrder && checkOrder.status === 'delivered') {
-            const adminFinishLink = `${baseUrl}/order/${orderNumber}/action?role=admin&status=completed&label=Selesaikan+Pesanan+Manual`
-            const itemsList = (order.items || []).map((i: any) => `- ${i.product?.name || 'Produk'} (x${i.quantity})`).join('\n')
-            await sendWhatsAppNotification(adminPhone, `⚠️ *PERHATIAN ADMIN* ⚠️\n\nKurir melaporkan bahwa pesanan ${orderNumber} telah diserahkan sejak 5 menit yang lalu, namun pembeli belum mengklik tombol konfirmasi terima.\n\n🛍️ *Item:*\n${itemsList}\n\nSilakan telepon pembeli di nomor ${order.customerPhone} untuk memastikan barang benar-benar sudah diterima.\n\nJika sudah dikonfirmasi secara lisan, silakan klik link di bawah ini untuk menutup pesanan:\n\n🏁 Tutup Pesanan: ${adminFinishLink}`)
-          }
-        } catch (e) {
-          console.error('Failed in admin delayed notification', e)
-        }
-      }, 300000) // 5 minutes
+      await sendWhatsAppNotification(
+        adminPhone,
+        buildAdminProgressLogMessage({
+          orderNumber,
+          customerName: order.customerName,
+          stageLabel: 'Barang Tiba - Menunggu Konfirmasi Pembeli',
+          detail: `${order.courier?.name || 'Kurir'} melaporkan barang sudah diterima warga. Menunggu pembeli menekan konfirmasi selesai.`,
+          itemsSummary: itemsText,
+        })
+      )
 
       return { success: true }
     }
 
-    // Default status update
-    await writeClient
-      .patch(order._id)
-      .set({ status: newStatus })
-      .commit()
+    // 7. Selesai (completed), Dibatalkan (cancelled), atau Kendala (problem)
+    const patchUpdates: Record<string, any> = {
+      status: newStatus,
+      courierOfferedAt: null,
+    }
+    if (newStatus === 'completed' && order.paymentMethod !== 'qris') {
+      patchUpdates.paymentStatus = 'paid'
+    }
+    await writeClient.patch(order._id).set(patchUpdates).commit()
 
-    // Notifikasi ke Admin bahwa ada perubahan status
-    const settings = await writeClient.fetch(APP_SETTINGS_QUERY)
-    const adminPhone = settings?.adminPhone || '081328128315'
+    if (newStatus === 'completed') {
+      // Tambah rekor transaksi berhasil warga
+      if (order.customerId) {
+        await writeClient
+          .patch(order.customerId.replace(/^drafts\./, ''))
+          .setIfMissing({ successfulOrders: 0 })
+          .inc({ successfulOrders: 1 })
+          .commit()
+          .catch(() => {})
+      }
 
-    const itemsList = (order.items || []).map((i: any) => `- ${i.product?.name || 'Produk'} (x${i.quantity})`).join('\n')
-    const adminMsg = `🔄 *UPDATE STATUS PESANAN*\n------------------\n🆔 *No:* ${orderNumber}\n👤 *User:* ${order.customerName}\n📈 *Status Baru:* ${newStatus}\n🛍️ *Item:*\n${itemsList}\n📝 *Catatan:* ${note || '-'}\n------------------`
-    await sendWhatsAppNotification(adminPhone, adminMsg)
+      // Kurangi stok produk saat pesanan baru selesai (guard: order.status sebelumnya bukan completed)
+      if (order.status !== 'completed') {
+        for (const item of order.items || []) {
+          const prodId = item?.product?._id
+          const qty = Number(item?.quantity) || 0
+          const currentStock = Number(item?.product?.stock)
+          if (prodId && qty > 0 && !Number.isNaN(currentStock)) {
+            const nextStock = Math.max(0, currentStock - qty)
+            await writeClient
+              .patch(String(prodId).replace(/^drafts\./, ''))
+              .set({ stock: nextStock })
+              .commit()
+              .catch(() => {})
+          }
+        }
+      }
+
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'PESANAN SELESAI',
+          body: 'Terima kasih, pesanan Anda telah selesai. Semoga bermanfaat bagi keluarga dan turut menggerakkan ekonomi warga Pondokrejo.',
+        })
+      )
+
+      const sellerPhones = Array.from(
+        new Set(
+          enrichedForSeller
+            .map((i: any) => normalizePhoneTo62(i.vendorPhone || ''))
+            .filter(Boolean)
+        )
+      ) as string[]
+      for (const sPhone of sellerPhones) {
+        await sendWhatsAppNotification(
+          sPhone,
+          `*PAWON PONDOKREJO - PESANAN SELESAI*\n--------------------------------\nNo. Pesanan : ${orderNumber}\nPemesan     : ${order.customerName}\n\nPesanan telah diterima pembeli dengan baik dan transaksi dinyatakan selesai.`
+        )
+      }
+    } else if (newStatus === 'cancelled') {
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'PESANAN DIBATALKAN',
+          body: `Mohon maaf, pesanan Anda dibatalkan${note ? ` (${note})` : ''}. Anda dapat memilih produk serupa di etalase PAWON.`,
+        })
+      )
+      if (order.courier?.phone) {
+        await sendWhatsAppNotification(
+          order.courier.phone,
+          `*PAWON PONDOKREJO - PESANAN DIBATALKAN*\n--------------------------------\nNo. Pesanan : ${orderNumber}\n\nPesanan atas nama ${order.customerName} dibatalkan dan pengantaran tidak perlu dilanjutkan.`
+        )
+      }
+    }
+
+    await sendWhatsAppNotification(
+      adminPhone,
+      buildAdminProgressLogMessage({
+        orderNumber,
+        customerName: order.customerName,
+        stageLabel: getStatusLabelId(newStatus),
+        detail: note || `Status pesanan diperbarui menjadi ${getStatusLabelId(newStatus)}.`,
+        itemsSummary: itemsText,
+      })
+    )
 
     return { success: true }
   } catch (error) {
     console.error('Update status failed:', error)
-    return { success: false, error: 'Gagal memperbarui status.' }
+    return { success: false, error: 'Gagal memperbarui status pesanan.' }
   }
 }
-

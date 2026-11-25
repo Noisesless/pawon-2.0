@@ -37,13 +37,15 @@ export default async function IncubatorDetailPage({ params }: Props) {
   const { data: service } = await sanityFetch({
     query: INCUBATOR_SERVICE_BY_SLUG_QUERY,
     params: { slug },
-  }) as { data: IncubatorService | null };
+  }) as { data: (IncubatorService & { adminPhone?: string }) | null };
 
   if (!service) {
     notFound();
   }
 
   const Icon = iconMap[service.iconName] || Globe;
+  const rawPhone = (service.adminPhone || "+62895325586281").replace(/\D/g, "");
+  const waAdminPhone = rawPhone.startsWith("0") ? "62" + rawPhone.slice(1) : rawPhone;
 
   return (
     <div className="bg-slate-50 min-h-screen">
@@ -109,7 +111,7 @@ export default async function IncubatorDetailPage({ params }: Props) {
                   Punya pertanyaan spesifik tentang layanan {service.title}? Tim kami siap membantu Anda.
                 </p>
                 <a
-                  href={`https://wa.me/081234567890?text=Halo, saya ingin berkonsultasi mengenai program Inkubator: ${service.title}`}
+                  href={`https://wa.me/${waAdminPhone}?text=Halo, saya ingin berkonsultasi mengenai program Inkubator: ${service.title}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-3 bg-green-600 hover:bg-green-700 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-xl shadow-green-600/30 active:scale-95"

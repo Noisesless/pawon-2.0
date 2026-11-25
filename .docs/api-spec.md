@@ -1,134 +1,108 @@
 # Spesifikasi API & Server Actions PAWON 🔌
-**Pasar Warga Pondokrejo — Integrasi Endpoint & Logika Server**
+**Pasar Warga Pondokrejo — Integrasi Endpoint, Engine, & Logika Server**
 
-Aplikasi PAWON mengombinasikan **REST Route Handlers** (untuk kebutuhan diagnostik publik/eksternal) dan **Next.js Server Actions** (`'use server'`) sebagai saluran utama logika bisnis, transaksi database, dan komunikasi WhatsApp yang aman.
+Aplikasi PAWON mengombinasikan **REST Route Handlers** (diagnostik & cron worker eksternal), **Core Library Engines** (`qrisEngine`, `orderSopEngine`), dan **Next.js Server Actions** (`'use server'`) sebagai saluran utama logika bisnis, mutasi Sanity, serta komunikasi WhatsApp.
 
 ---
 
-## 1. REST Route Handlers (API Routes)
+## 1. REST Route Handlers (`src/app/api/*`)
 
 ### A. Diagnostik Versi Sistem
 - **Route**: `GET /api/version`
 - **File**: `src/app/api/version/route.ts`
 - **Akses**: Publik
-- **Deskripsi**: Memeriksa status hidup aplikasi, versi saat ini, dan timestamp anti-cache.
-- **Contoh Respons (JSON)**:
-  ```json
-  {
-    "version": "4.1",
-    "message": "System is running the ULTIMATE anti-cache fallback diagnostic.",
-    "time": "2026-09-16T05:40:00.000Z"
-  }
-  ```
+- **Deskripsi**: Memeriksa status hidup aplikasi, versi runtime, dan timestamp anti-cache.
 
 ### B. Diagnostik Data Kurir
 - **Route**: `GET /api/debug-couriers`
 - **File**: `src/app/api/debug-couriers/route.ts`
-- **Akses**: Diagnostik Admin (Internal)
-- **Deskripsi**: Mengambil daftar kurir terdaftar di Sanity secara langsung dan menghasilkan Magic Link pengujian untuk alur status COD.
-- **Contoh Respons (JSON)**:
-  ```json
-  {
-    "message": "Ini adalah daftar 100% akurat dari database Sanity yang terbaca oleh sistem saat ini.",
-    "totalCouriersFound": 2,
-    "couriers": {
-      "Pak Agus": {
-        "phone": "08123456789",
-        "isActive": true,
-        "status": "active",
-        "adminClickLink_COD": "https://pawon.pondokrejo.id/order/TEST-123/action?role=admin&status=processing_cod&courierId=...&courierPhone=08123456789&label=Kirim+Tugas+ke+Pak+Agus"
-      }
-    }
-  }
-  ```
+- **Akses**: Diagnostik Internal Admin
+- **Deskripsi**: Membaca daftar kurir terdaftar di Sanity beserta format Magic Link uji coba alur COD.
+
+### C. Cron Webhook SOP Pesanan Otomatis
+- **Route**: `GET /api/cron/order-sop`
+- **File**: `src/app/api/cron/order-sop/route.ts`
+- **Akses**: Terproteksi `CRON_SECRET` (opsional jika env diset; mendukung header `Authorization: Bearer <secret>` atau query `?secret=<secret>`)
+- **Query Params Opsional**:
+  - `dryRun=true`: Hanya mengklasifikasi kandidat pesanan melewati batas SLA tanpa memodifikasi database atau mengirim WA.
+  - `force=true`: Memaksa evaluasi meskipun `appSettings.isSopAutoEnabled === false`.
+- **Deskripsi**: Memicu `runOrderSopEvaluation()` untuk menutup pesanan kadaluwarsa (`pending`/`processing` → `cancelled`, `delivered` → `completed`) secara aman via external cron/systemd/crontab.
 
 ---
 
-## 2. Katalog Server Actions (`src/app/actions/*`)
+## 2. Core Business & Payment Engines (`src/lib/*`)
 
-Semua mutasi database mengeksekusi Sanity Write Client dengan otorisasi `SANITY_API_WRITE_TOKEN`.
+### A. Dynamic QRIS EMVCo Engine (`src/lib/qrisEngine.ts`)
+| Simbol | Parameter | Deskripsi |
+|---|---|---|
+| `calculateCRC16` | `data: string \| Uint8Array` | Menghitung checksum CRC-16/CCITT-FALSE (polynomial `0x1021`, init `0xFFFF`). |
+| `validateCRC16` | `payload: string` | Memvalidasi keutuhan 4-hex digit Tag `63` pada string QRIS statis. |
+| `parseTLVString` / `parseQRIS` | `payload: string` | Mengurai TLV EMVCo dan mengekstrak `merchantName` (Tag 59), `nmid` (Tag 26/51), dll. |
+| `getDefaultPawonStaticQris` / `DEFAULT_PAWON_STATIC_QRIS` | `-` | Generator payload QRIS statis fallback ber-checksum valid untuk demo/default PAWON. |
+| `generateDynamicQRIS` | `staticPayload, amount, feeAmount?` | Mengubah Tag `01` menjadi `12` (dynamic), menyuntikkan Tag `54` (nominal terkunci), dan menghitung ulang CRC-16 Tag `63`. |
 
-### 📦 A. Manajemen Pesanan Barang (`order.ts`)
-| Fungsi | Parameter | Tipe Kembalian | Deskripsi |
-|---|---|---|---|
-| `createOrder` | `formData: OrderFormData`, `items: CartItem[]`, `totalAmount: number`, `shippingFee: number`, `customerId?: string` | `Promise<{ success: boolean, orderId?: string, orderNumber?: string, error?: string }>` | Validasi status buka toko, resolusi draft item, generate nomor pesanan `ORD-XXXXXX`, simpan pesanan ke Sanity, dan picu broadcast WA ke Admin, Penjual, Kurir, & Pembeli. |
-| `updateOrderStatus` | `orderNumber: string`, `newStatus: string`, `note?: string`, `courierId?: string`, `courierPhoneParam?: string` | `Promise<{ success: boolean, message?: string, error?: string }>` | Eksekusi perpindahan status pesanan (pending → accepted → processing → shipped → delivering → delivered → completed / cancelled), integrasi Magic Link, dan pengiriman notifikasi WA otomatis. |
+### B. Order SOP, Round-Robin & Action Token (`src/lib/*`)
+| File | Simbol | Deskripsi |
+|---|---|---|
+| `src/lib/courierAssigner.ts` | `pickNextRoundRobinCourier` | Memilih kurir aktif (`isActive === true && status !== 'inactive'`) berdasarkan `lastAssignedAt` terlama/kosong, mengecualikan `rejectedCourierIds`, lalu memperbarui timestamp giliran. |
+| `src/lib/actionToken.ts` | `createOrderActionToken`, `verifyOrderActionToken`, `buildOrderActionUrl`, `normalizePhoneTo62`, `getPhoneLookupVariants` | Generator/verifikator token HMAC `?k=...` untuk tautan aksi WA dan normalisasi nomor telepon (`08`/`628`/`+628`). |
+| `src/lib/orderSopEngine.ts` | `classifyOrderForSop`, `runCourierTimeoutCheck`, `runOrderSopEvaluation` | Klasifikasi kedaluwarsa, pengecekan auto-skip antrean kurir tidak merespons (`courierOfferedAt`), dan penutupan pesanan otomatis + ringkasan WA bersih. |
 
-### 🛠️ B. Pemesanan Jasa Warga (`service-order.ts`)
-| Fungsi | Parameter | Tipe Kembalian | Deskripsi |
-|---|---|---|---|
-| `createServiceOrder` | `data: { serviceId: string, customerName: string, customerPhone: string, deliveryAddress: string, serviceDate: string, notes?: string }` | `Promise<{ success: boolean, orderId?: string, orderNumber?: string, error?: string }>` | Mencatat pesanan jasa warga ke database Sanity dan mengirimkan notifikasi penugasan via WhatsApp kepada penyedia jasa bersangkutan. |
+---
 
-### 🏪 C. Portal Penjual / Lapak UMKM (`vendor-portal.ts`, `vendor-products.ts`, `vendor-services.ts`, `vendor.ts`)
-| File | Fungsi | Parameter | Deskripsi |
-|---|---|---|---|
-| `vendor.ts` | `registerVendor` | `formData: FormData` | Pendaftaran mandiri pelaku UMKM baru dengan upload logo dan data kontak. |
-| `vendor-portal.ts` | `getVendorByPhone` | `phone: string, pin: string` | Autentikasi portal UMKM dengan memverifikasi nomor WA dan validasi PIN (initial: 123456). |
-| `vendor-portal.ts` | `updateVendorProfile` | `vendorId: string, data: { isOpen, closingMessage?, description? }` | Saklar buka/tutup toko dan deskripsi lapak secara real-time. |
-| `vendor-products.ts` | `getVendorProducts` | `vendorId: string` | Mengambil seluruh produk yang dimiliki oleh UMKM bersangkutan. |
-| `vendor-products.ts` | `uploadImageToSanity` | `formData: FormData` | Upload aset foto produk langsung ke Sanity Asset Pipeline. |
-| `vendor-products.ts` | `createVendorProduct` | `vendorId: string, data: { name, price, stock, imageAssetId, categoryId?, ... }` | Menambahkan produk baru ke katalog lapak. |
-| `vendor-products.ts` | `updateVendorProduct` | `productId: string, vendorId: string, data: { ... }` | Memperbarui detail, harga, atau stok produk. |
-| `vendor-products.ts` | `deleteVendorProduct` | `productId: string, vendorId: string` | Menghapus dokumen produk dari katalog. |
-| `vendor-services.ts` | `getVendorServices` | `vendorId: string` | Mengambil daftar jasa yang ditawarkan oleh penyedia jasa. |
-| `vendor-services.ts` | `createVendorService` | `vendorId: string, data: { ... }` | Mendaftarkan layanan jasa baru. |
-| `vendor-services.ts` | `updateVendorService` | `serviceId: string, vendorId: string, data: { ... }` | Mengubah detail jasa atau tarif. |
-| `vendor-services.ts` | `deleteVendorService` | `serviceId: string, vendorId: string` | Menghapus layanan jasa. |
+## 3. Katalog Server Actions (`src/app/actions/*`)
 
-### 🚚 D. Portal Kurir Kalurahan (`courier.ts`, `courier-portal.ts`)
-| File | Fungsi | Parameter | Deskripsi |
-|---|---|---|---|
-| `courier.ts` | `registerCourier` | `formData: { name: string, phone: string }` | Pendaftaran kurir baru oleh admin kalurahan. |
-| `courier-portal.ts` | `getCourierByPhone` | `phone: string, pin: string` | Autentikasi petugas kurir via nomor WA dan PIN akses. |
-| `courier-portal.ts` | `updateCourierStatus` | `courierId: string, data: { isActive: boolean, statusMessage? }` | Set status aktif/libur kurir dan catatan ketersediaan tugas. |
-| `courier-portal.ts` | `getCourierOrders` | `courierId: string` | Menampilkan seluruh daftar tugas pengantaran yang ditugaskan ke kurir. |
+Semua mutasi menulis langsung dokumen *published* di Sanity via `SANITY_API_WRITE_TOKEN`.
 
-### 👤 E. Warga & Pembeli (`buyer.ts`, `customer.ts`, `buyer-order.ts`)
-| File | Fungsi | Parameter | Deskripsi |
-|---|---|---|---|
-| `customer.ts` | `getOrCreateCustomer` | `formData: { name, phone, address }` | Menemukan profil warga berdasarkan nomor WA, memperbarui data alamat/nama secara non-blocking jika ada perubahan, atau membuat dokumen customer baru dengan otorisasi `SANITY_API_WRITE_TOKEN`. |
-| `customer.ts` | `getCustomerById` | `id: string` | Mengambil profil warga beserta riwayat transaksi COD sukses dan gagal. |
-
-| `buyer.ts` | `loginBuyer` | `phone: string, pin: string` | Login akun warga untuk mengakses riwayat pesanan. |
-| `buyer.ts` | `getBuyerOrders` | `phone: string` | Riwayat seluruh pesanan barang dan jasa warga. |
-| `buyer.ts` | `changeBuyerPin` | `phone: string, oldPin: string, newPin: string` | Penggantian PIN mandiri oleh warga demi keamanan. |
-| `buyer-order.ts` | `completeOrder` | `orderId: string` | Konfirmasi penerimaan pesanan oleh pembeli. |
-
-### 🛡️ F. Operasional Admin (`admin.ts`)
+### 📦 A. Pesanan Barang & Konfigurasi QRIS Publik (`order.ts`)
 | Fungsi | Parameter | Deskripsi |
 |---|---|---|
-| `fetchAllOrders` | `-` | Mengambil seluruh daftar transaksi terkini untuk keperluan monitoring admin kalurahan. |
+| `getPublicPaymentSettings` | `-` | Mengambil status aktif QRIS (`isQrisEnabled`), merchant name, NMID, `qrisStaticPayload` (fallback demo jika invalid/kosong), dan `defaultShippingFee` untuk halaman checkout & cart. |
+| `createOrder` | `formData, items, totalAmount, shippingFee, customerId?` | Validasi buka/tutup lapak, untuk COD langsung tugaskan kurir Round-Robin (`processing`) + notif WA ke Penjual/Kurir/Pembeli & log Admin; untuk QRIS (`pending`) kirim 1 tautan verifikasi Admin. |
+| `updateOrderStatus` | `orderNumber, newStatus, note?, courierId?, courierPhoneParam?, actionGuard?` | Validasi token `?k=...`, eksekusi perpindahan status (`paid`, `processing_cod`, `reject`, `accepted`, `shipped`, `delivering`, `delivered`, `completed`, `cancelled`), pengalihan kurir saat ditolak, pengurangan stok saat selesai, serta WA bersih. |
 
----
+### 🛠️ B. Pemesanan Jasa Warga (`service-order.ts`)
+| Fungsi | Parameter | Deskripsi |
+|---|---|---|
+| `createServiceOrder` | `{ serviceId, customerName, customerPhone, deliveryAddress, serviceDate, notes? }` | Mencatat pesanan layanan jasa warga (`orderCategory: 'service'`) beserta kontak dinamis penyedia & admin. |
 
-## 3. Format Respons & Error Handling
+### 🛡️ C. Pusat Kendali Admin Zero-Draft (`admin.ts`)
+| Fungsi | Kategori | Deskripsi |
+|---|---|---|
+| `verifyAdminPin` | Auth | Memvalidasi PIN admin terhadap `appSettings.adminPin` di Sanity. |
+| `fetchAllOrders` | Orders | Mengambil daftar pesanan lengkap beserta info kurir & daftar kurir aktif. |
+| `fetchAdminDashboardData` | Dashboard | Batch fetch seluruh entitas (`orders`, `vendors`, `couriers`, `customers`, `products`, `services`, `categories`, `banners`, `articles`, `incubatorServices`, `incubatorSettings`, `appSettings`) untuk 6 tab admin. |
+| `adminConfirmAndAssignOrder` | Orders | Konfirmasi pesanan masuk, update pembayaran QRIS jika perlu, dan tugaskan kurir. |
+| `adminUpdateOrderDirect` | Orders | Ubah status pesanan, status bayar, kurir, dan catatan secara langsung dari tabel/kartu admin. |
+| `adminQuickOrderTransition` | Orders | Transisi cepat status per tahap pesanan (`processing`, `shipped`, `delivering`, `delivered`, `completed`, `cancelled`). |
+| `previewOrderSopAction` | SOP Worker | Menjalankan `runOrderSopEvaluation({ dryRun: true, force: true })` untuk pratinjau kandidat order sebelum eksekusi. |
+| `executeOrderSopAction` | SOP Worker | Mengeksekusi `runOrderSopEvaluation({ dryRun: false, force: true, sendWaForRecent })` langsung dari modal admin. |
+| `uploadAdminImage` | Media | Mengunggah aset gambar dari form admin langsung ke Sanity Image Asset Pipeline. |
+| `adminDeleteDocument` | Utility | Menghapus dokumen published maupun sisa draft secara bersih. |
+| `saveAppSettings` | Settings & QRIS | Menyimpan konfigurasi global WA admin, ongkir, PIN admin, pengaturan QRIS (`isQrisEnabled`, `qrisMerchantName`, `qrisNmid`, `qrisStaticPayload`), dan ambang batas SOP SLA. |
+| `saveVendor`, `saveCourier`, `saveCustomer`, `saveProduct`, `saveService`, `saveCategory`, `saveBanner`, `saveArticle`, `saveIncubatorService`, `saveIncubatorSettings` | Full CRUD | Create/Update dokumen langsung berstatus *published* untuk seluruh entitas marketplace, konten, dan inkubator UMKM. |
 
-Semua Server Actions mengembalikan objek JSON dengan struktur standar:
-```typescript
-// Sukses
-{
-  success: true,
-  data?: any,
-  message?: string
-}
+### 🏪 D. Portal Penjual / Lapak UMKM (`vendor.ts`, `vendor-portal.ts`, `vendor-products.ts`, `vendor-services.ts`)
+- `registerVendor(formData)`: Registrasi mandiri lapak UMKM baru.
+- `getVendorByPhone(phone, pin)`, `updateVendorProfile(vendorId, data)`: Autentikasi (tahan format `08`/`628`/`+628`) & saklar buka/tutup toko.
+- `getVendorOrders(vendorId)`, `vendorOrderTransition(orderNumber, nextStatus, note)`: Daftar pesanan masuk milik toko & tombol siap ambil/batalkan.
+- `getVendorProducts`, `uploadImageToSanity`, `createVendorProduct`, `updateVendorProduct`, `deleteVendorProduct`: Pengelolaan produk oleh UMKM.
+- `getVendorServices`, `createVendorService`, `updateVendorService`, `deleteVendorService`: Pengelolaan layanan jasa oleh UMKM.
 
-// Gagal
-{
-  success: false,
-  error: string // Pesan human-readable dalam Bahasa Indonesia untuk ditampilkan pada toast / UI
-}
-```
+### 🚚 E. Portal Kurir Kalurahan (`courier.ts`, `courier-portal.ts`)
+- `registerCourier`, `getCourierByPhone(phone, pin)` *(mendukung varian `08`/`628`/`+628`)*, `updateCourierStatus(courierId, data)`, `getCourierOrders(courierId)`.
+
+### 👤 F. Warga & Pembeli (`customer.ts`, `buyer.ts`, `buyer-order.ts`)
+- `getOrCreateCustomer`, `getCustomerById`
+- `loginBuyer`, `getBuyerOrders`, `changeBuyerPin`
+- `completeOrder`
 
 ---
 
 ## 4. Layanan Gateway WhatsApp Fonnte (`src/sanity/lib/whatsapp.ts`)
 
-Layanan internal untuk broadcast pesan WhatsApp ke semua stakeholder:
-
-| Fungsi | Parameter | Tipe Kembalian | Deskripsi |
-|---|---|---|---|
-| `sendWhatsAppNotification` | `target: string, message: string` | `Promise<{ success: boolean, data?: any, error?: string }>` | Mengirim pesan ke endpoint `https://api.fonnte.com/send`. Menggunakan token dari variabel lingkungan `process.env.FONNTE_TOKEN` / `FONNTE_API_TOKEN`, serta otomatis menormalisasi nomor tujuan menjadi format standar internasional `628...`. |
-
-| `formatOrderMessage` | `orderNumber, customerName, customerPhone, deliveryAddress, items, totalPrice, shippingFee, grandTotal` | `string` | Membentuk pesan invoice rincian belanja dan instruksi pembayaran COD untuk admin dan kurir. |
-| `formatServiceOrderMessage` | `orderNumber, customerName, customerPhone, serviceAddress, serviceName, serviceDate, price` | `string` | Membentuk format pesan penugasan layanan jasa warga. |
-
+| Fungsi | Deskripsi |
+|---|---|
+| `sendWhatsAppNotification(target, message)` | Mengirim pesan via `https://api.fonnte.com/send` memakai `process.env.FONNTE_TOKEN` (atau `FONNTE_API_TOKEN`) dengan normalisasi nomor tujuan ke `628...`. |
+| `formatOrderMessage` | Membentuk template pesan ringkas/lengkap untuk notifikasi pesanan barang. |
+| `formatServiceOrderMessage` | Membentuk format pesan notifikasi pemesanan jasa warga. |

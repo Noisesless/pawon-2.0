@@ -30,9 +30,10 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
-  const shippingFee = items.length > 0 ? 5000 : 0 // Tarif flat Rp 5.000 untuk pengiriman kalurahan
+  const [configuredShippingFee, setConfiguredShippingFee] = useState(5000)
+  const shippingFee = items.length > 0 ? configuredShippingFee : 0
 
-  // Load from localStorage on mount
+  // Load from localStorage & sync dynamic shippingFee from appSettings on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -45,6 +46,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       } finally {
         setIsInitialized(true)
       }
+
+      import('@/app/actions/order')
+        .then(({ getPublicPaymentSettings }) => getPublicPaymentSettings())
+        .then((res) => {
+          if (res?.success && typeof res.data?.defaultShippingFee === 'number') {
+            setConfiguredShippingFee(res.data.defaultShippingFee)
+          }
+        })
+        .catch(() => {})
     }
   }, [])
 
