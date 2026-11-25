@@ -591,32 +591,55 @@ export default function AdminFinanceTab({
                 </div>
 
                 {hasActivity && (
-                  <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-xl border border-[var(--vibe-border)] text-[11px]">
-                    <div>
-                      <span className="block text-[var(--vibe-text-sub)] font-bold">
-                        Selesai ({summary.orderCount})
-                      </span>
-                      <span className="font-black text-[var(--vibe-text-main)]">
-                        {formatRp(summary.codOrderTotal + summary.qrisOrderTotal)}
-                      </span>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-[var(--vibe-border)] text-[11px]">
+                      <div>
+                        <span className="block text-[var(--vibe-text-sub)] font-bold">
+                          Selesai ({summary.orderCount})
+                        </span>
+                        <span className="font-black text-[var(--vibe-text-main)]">
+                          {formatRp(summary.codOrderTotal + summary.qrisOrderTotal)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[var(--vibe-text-sub)] font-bold">
+                          Bayar Penjual
+                        </span>
+                        <span className="font-black text-rose-600">
+                          {formatRp(summary.sellerCashPaid)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[var(--vibe-text-sub)] font-bold">
+                          Tunai di Kurir
+                        </span>
+                        <span className="font-black text-[var(--vibe-text-main)]">
+                          {summary.endingCashInHand < 0
+                            ? `-${formatRp(summary.endingCashInHand)}`
+                            : formatRp(summary.endingCashInHand)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="block text-[var(--vibe-text-sub)] font-bold">
+                          Upah / Kas
+                        </span>
+                        <span className="font-black text-[var(--vibe-accent-1)]">
+                          {formatRp(summary.courierCommissionTotal)} /{' '}
+                          {formatRp(summary.kalurahanFeeTotal)}
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="block text-[var(--vibe-text-sub)] font-bold">
-                        Bayar Penjual
-                      </span>
-                      <span className="font-black text-rose-600">
-                        {formatRp(summary.sellerCashPaid)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="block text-[var(--vibe-text-sub)] font-bold">
-                        Upah / Kas
-                      </span>
-                      <span className="font-black text-[var(--vibe-accent-1)]">
-                        {formatRp(summary.courierCommissionTotal)} /{' '}
-                        {formatRp(summary.kalurahanFeeTotal)}
-                      </span>
-                    </div>
+
+                    {summary.sellerCashPaid > summary.openingFloatCash ? (
+                      <div className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-[11px] font-bold">
+                        Memakai dana talangan pribadi melebihi kas awal ({formatRp(summary.openingFloatCash)})
+                      </div>
+                    ) : summary.sellerCashPaid === summary.openingFloatCash &&
+                      summary.sellerCashPaid > 0 ? (
+                      <div className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold">
+                        Kas awal {formatRp(summary.openingFloatCash)} terpakai penuh untuk belanja barang; setor penuh jika tutup shift: {formatRp(summary.netFullClose)}
+                      </div>
+                    ) : null}
                   </div>
                 )}
 

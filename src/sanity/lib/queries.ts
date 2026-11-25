@@ -343,6 +343,7 @@ export const ORDER_BY_NUMBER_QUERY = defineQuery(`
     paymentMethod,
     paymentStatus,
     deliveryAddress,
+    courierOfferedAt,
     autoResolutionReason,
     _createdAt,
     "serviceItem": serviceItem->{

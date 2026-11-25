@@ -321,11 +321,12 @@ export async function createOrder(
         await sendWhatsAppNotification(formData.phone, buyerQrisMsg)
       } else {
         // COD: Otomatis penuh -> notif ke Penjual, Kurir giliran, Pembeli, dan WA Admin hanya Log
+        // Nama kurir belum dicantumkan ke Pembeli/Penjual sebelum kurir benar-benar Terima Order
         const sellerNames = await notifyVendorsGrouped(
           baseUrl,
           orderNumber,
           formData.name,
-          roundRobinResult.courier?.name || null,
+          null,
           enrichedItems,
           adminPhone
         )
@@ -335,9 +336,7 @@ export async function createOrder(
           orderNumber,
           customerName: formData.name,
           headline: 'PESANAN COD DITERIMA',
-          body: roundRobinResult.courier
-            ? `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan COD Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sudah diteruskan ke penjual dan kurir ${roundRobinResult.courier.name}.`
-            : `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan COD Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sudah diteruskan ke penjual untuk disiapkan.`,
+          body: `Terima kasih telah berbelanja di PAWON Pondokrejo. Pesanan COD Anda sebesar Rp${totalAmount.toLocaleString('id-ID')} sudah diteruskan ke penjual dan sistem sedang mencarikan kurir pengantar.`,
           items: items.map((i) => ({ name: i.name, quantity: i.quantity })),
         })
         await sendWhatsAppNotification(formData.phone, buyerCodMsg)
@@ -491,7 +490,7 @@ export async function updateOrderStatus(
       }
       await writeClient.patch(order._id).set(patchFields).commit()
 
-      // Notif Pembeli
+      // Notif Pembeli (belum mencantumkan nama kurir sebelum kurir Terima Order)
       const buyerMsg = buildBuyerStatusMessage({
         baseUrl,
         orderNumber,
@@ -500,9 +499,7 @@ export async function updateOrderStatus(
           newStatus === 'paid'
             ? 'PEMBAYARAN QRIS DIKONFIRMASI'
             : 'PESANAN COD DIPROSES',
-        body: rr.courier
-          ? `${newStatus === 'paid' ? 'Pembayaran QRIS Anda sudah diterima.' : 'Pesanan COD Anda sudah dikonfirmasi.'} Barang sedang disiapkan penjual dan akan dikirim oleh ${rr.courier.name}.`
-          : `${newStatus === 'paid' ? 'Pembayaran QRIS Anda sudah diterima.' : 'Pesanan COD Anda sudah dikonfirmasi.'} Barang sedang disiapkan penjual.`,
+        body: `${newStatus === 'paid' ? 'Pembayaran QRIS Anda sudah diterima.' : 'Pesanan COD Anda sudah dikonfirmasi.'} Barang sedang disiapkan penjual dan sistem sedang mencarikan kurir pengantar.`,
         items: cleanItems,
       })
       await sendWhatsAppNotification(order.customerPhone, buyerMsg)
@@ -512,7 +509,7 @@ export async function updateOrderStatus(
         baseUrl,
         orderNumber,
         order.customerName,
-        rr.courier?.name || null,
+        null,
         enrichedForSeller,
         adminPhone
       )
@@ -698,6 +695,19 @@ export async function updateOrderStatus(
         )
       }
 
+      // Kabari Pembeli nama kurir yang sudah resmi menyanggupi pengantaran
+      await sendWhatsAppNotification(
+        order.customerPhone,
+        buildBuyerStatusMessage({
+          baseUrl,
+          orderNumber,
+          customerName: order.customerName,
+          headline: 'KURIR MENJEMPUT PESANAN',
+          body: `Kurir ${activeCourierName} telah menerima tugas pengantaran dan sedang menuju penjual untuk mengambil pesanan Anda.`,
+          items: cleanItems,
+        })
+      )
+
       await sendWhatsAppNotification(
         adminPhone,
         buildAdminProgressLogMessage({
@@ -757,6 +767,8 @@ export async function updateOrderStatus(
         }
       }
 
+      const stillWaitingCourier = triggeredBySeller && Boolean(order.courierOfferedAt)
+
       await sendWhatsAppNotification(
         order.customerPhone,
         buildBuyerStatusMessage({
@@ -764,7 +776,9 @@ export async function updateOrderStatus(
           orderNumber,
           customerName: order.customerName,
           headline: 'PESANAN SIAP DIANTAR',
-          body: `Barang pesanan Anda sudah siap dan diserahkan ke kurir (${activeCourierName}) untuk segera dikirim ke alamat Anda.`,
+          body: stillWaitingCourier
+            ? 'Barang pesanan Anda sudah disiapkan penjual dan sedang menunggu konfirmasi kurir pengantar.'
+            : `Barang pesanan Anda sudah siap dan diserahkan ke kurir (${activeCourierName}) untuk segera dikirim ke alamat Anda.`,
           items: cleanItems,
         })
       )
@@ -774,8 +788,12 @@ export async function updateOrderStatus(
         buildAdminProgressLogMessage({
           orderNumber,
           customerName: order.customerName,
-          stageLabel: 'Barang Diserahkan ke Kurir',
-          detail: `${note || 'Barang telah disiapkan penjual dan berada di tangan kurir.'}`,
+          stageLabel: stillWaitingCourier
+            ? 'Barang Siap - Menunggu Konfirmasi Kurir'
+            : 'Barang Diserahkan ke Kurir',
+          detail: stillWaitingCourier
+            ? `Penjual sudah menyiapkan barang. Penawaran masih menunggu konfirmasi ${activeCourierName}.`
+            : `${note || 'Barang telah disiapkan penjual dan berada di tangan kurir.'}`,
         })
       )
 

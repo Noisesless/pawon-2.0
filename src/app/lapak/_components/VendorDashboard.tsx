@@ -4,6 +4,7 @@ import {
   getVendorOrders,
   vendorOrderTransition,
 } from '@/app/actions/vendor-portal'
+import { isCourierConfirmedForOrder } from '@/lib/courierAssigner'
 import {
   Save,
   Power,
@@ -224,12 +225,18 @@ export default function VendorDashboard({ initialData, onLogout }: Props) {
                       </div>
                     )}
 
-                    {ord.courier && (
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                        <Truck className="w-4 h-4 text-green-600" />
-                        <span>Kurir: {ord.courier.name}</span>
-                      </div>
-                    )}
+                    {!isService &&
+                      (isCourierConfirmedForOrder(ord) ? (
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                          <Truck className="w-4 h-4 text-green-600" />
+                          <span>Kurir: {ord.courier.name}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs font-bold text-amber-700">
+                          <Truck className="w-4 h-4 text-amber-600" />
+                          <span>Kurir: Menunggu konfirmasi kurir dalam antrean</span>
+                        </div>
+                      ))}
 
                     {['processing', 'accepted'].includes(ord.status) && (
                       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">

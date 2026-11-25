@@ -1,5 +1,6 @@
 import { sanityFetch } from '@/sanity/lib/live'
 import { ORDER_BY_NUMBER_QUERY } from '@/sanity/lib/queries'
+import { isCourierConfirmedForOrder } from '@/lib/courierAssigner'
 import { notFound } from 'next/navigation'
 import {
   MapPin,
@@ -15,6 +16,7 @@ import {
   AlertTriangle,
   ChefHat,
   ThumbsUp,
+  Search,
 } from 'lucide-react'
 import Link from 'next/link'
 import CompleteOrderButton from '@/components/CompleteOrderButton'
@@ -228,7 +230,7 @@ export default async function MobileOrderDetailPage({ params }: Props) {
           </div>
 
           {/* Courier Info */}
-          {!isService && order.courier && (
+          {!isService && isCourierConfirmedForOrder(order) ? (
             <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden">
               <div className="relative z-10">
                 <h4 className="text-xs font-black uppercase tracking-[0.2em] text-green-400 mb-4">
@@ -253,6 +255,22 @@ export default async function MobileOrderDetailPage({ params }: Props) {
               </div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 blur-2xl rounded-full -mr-16 -mt-16" />
             </div>
+          ) : (
+            !isService &&
+            ['processing', 'shipped', 'accepted'].includes(order.status) && (
+              <div className="bg-amber-50 rounded-[2rem] p-6 border border-amber-100 flex items-start gap-4">
+                <div className="bg-amber-100 p-3 rounded-2xl text-amber-700 flex-shrink-0">
+                  <Search className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-black text-slate-900 text-sm">Menunggu Konfirmasi Kurir</p>
+                  <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                    Pesanan Anda sedang ditawarkan ke kurir aktif. Nama kurir muncul otomatis
+                    setelah kurir menerima tugas.
+                  </p>
+                </div>
+              </div>
+            )
           )}
 
           {['accepted', 'processing', 'shipped', 'delivering', 'delivered'].includes(

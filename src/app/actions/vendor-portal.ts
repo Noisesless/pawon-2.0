@@ -90,6 +90,7 @@ export async function getVendorOrders(vendorId: string) {
           paymentMethod,
           paymentStatus,
           status,
+          courierOfferedAt,
           serviceDate,
           _createdAt,
           "serviceItem": serviceItem->{ name, price, "vendorId": vendor._ref },

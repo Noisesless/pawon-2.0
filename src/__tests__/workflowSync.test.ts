@@ -494,15 +494,16 @@ describe('Factual E2E Simulation: Admin Center, Dynamic QRIS, Courier Sync & Wha
     expect(orderAfterConfirm.courierNotes).toBe('Titip di teras rumah cat hijau')
 
     // Verify 3 WhatsApp broadcasts fired accurately without any hardcoded fallback phones or emojis:
-    // a) Buyer (6281277778888)
+    // a) Buyer (6281277778888) - nama kurir belum ditampilkan sebelum kurir klik Terima Order
     const buyerPaidWa = waOutbox.find((m) => m.target === '6281277778888')
     expect(buyerPaidWa?.message).toContain('Pembayaran QRIS Anda sudah diterima')
-    expect(buyerPaidWa?.message).toContain('Mas Bagus Kurir')
+    expect(buyerPaidWa?.message).not.toContain('Mas Bagus Kurir')
 
     // b) Seller UMKM Warung Mak Mur (6285611112222)
     const sellerWa = waOutbox.find((m) => m.target === '6285611112222')
     expect(sellerWa?.message).toContain('PESANAN MASUK PENJUAL')
     expect(sellerWa?.message).toContain('Lanting Singkong Super Gurih')
+    expect(sellerWa?.message).not.toContain('Mas Bagus Kurir')
 
     // c) Courier Mas Bagus (6287733334444) -> Explicitly states Lunas via QRIS + Accept/Reject buttons
     const courierWa = waOutbox.find((m) => m.target === '6287733334444')
@@ -590,12 +591,21 @@ describe('Factual E2E Simulation: Admin Center, Dynamic QRIS, Courier Sync & Wha
     expect(vendorOrdersRes.data?.some((o: any) => o.orderNumber === ordNum)).toBe(true)
 
     // Even if seller marks 'shipped' before courier accepts, courierOfferedAt stays active for auto-skip
+    // AND buyer/seller WA & track page MUST NOT display queued courier until accepted
+    const { isCourierConfirmedForOrder } = await import('@/lib/courierAssigner')
+    expect(isCourierConfirmedForOrder(mockDb.get(ordId))).toBe(false)
+
+    waOutbox.length = 0
     await updateOrderStatus(ordNum, 'shipped', 'Penjual siap', undefined, undefined, {
       role: 'seller',
       token: (await import('@/lib/actionToken')).createOrderActionToken(ordNum, 'seller', 'shipped'),
     })
     expect(mockDb.get(ordId).status).toBe('shipped')
     expect(mockDb.get(ordId).courierOfferedAt).toBeTruthy()
+    expect(isCourierConfirmedForOrder(mockDb.get(ordId))).toBe(false)
+    const buyerWaitWa = waOutbox.find((m) => m.target === '6281277778888')
+    expect(buyerWaitWa?.message).toContain('menunggu konfirmasi kurir')
+    expect(buyerWaitWa?.message).not.toContain('Mas Bagus')
 
     // Courier #1 rejects -> auto-rotates to Courier #2 (courier-resting)
     const rejectRes = await updateOrderStatus(ordNum, 'reject', 'Ban bocor', 'courier-active')

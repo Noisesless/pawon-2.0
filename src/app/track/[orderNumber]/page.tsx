@@ -1,4 +1,5 @@
 import { sanityFetch } from '@/sanity/lib/live'
+import { isCourierConfirmedForOrder } from '@/lib/courierAssigner'
 import { notFound } from 'next/navigation'
 import {
   MapPin,
@@ -15,6 +16,7 @@ import {
   Check,
   ChefHat,
   ThumbsUp,
+  Search,
 } from 'lucide-react'
 import Link from 'next/link'
 import CompleteOrderButton from '@/components/CompleteOrderButton'
@@ -288,7 +290,7 @@ export default async function OrderResultPage({ params }: Props) {
                   </div>
                 )}
 
-                {!isService && order.courier && (
+                {!isService && isCourierConfirmedForOrder(order) ? (
                   <div className="bg-green-50 p-4 rounded-2xl border border-green-100">
                     <h3 className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2 flex items-center gap-2">
                       <PackageCheck className="w-4 h-4" /> Kurir yang Bertugas
@@ -301,6 +303,19 @@ export default async function OrderResultPage({ params }: Props) {
                       Hubungi Kurir (WA)
                     </a>
                   </div>
+                ) : (
+                  !isService &&
+                  ['processing', 'shipped', 'accepted'].includes(order.status) && (
+                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100">
+                      <h3 className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1.5 flex items-center gap-2">
+                        <Search className="w-4 h-4" /> Menunggu Konfirmasi Kurir
+                      </h3>
+                      <p className="text-xs font-medium text-amber-700 leading-relaxed">
+                        Sistem sedang mencarikan dan menunggu konfirmasi kurir aktif. Nama kurir
+                        akan tampil setelah kurir menyanggupi pengantaran.
+                      </p>
+                    </div>
+                  )
                 )}
               </div>
             </div>

@@ -8,6 +8,22 @@ export interface AssignedCourier {
 }
 
 /**
+ * Kurir hanya dianggap resmi bertugas setelah mengklik Terima Order (courierOfferedAt sudah null).
+ * Selama penawaran masih menunggu / dapat di-skip atau ditolak, nama & WA kurir tidak ditampilkan ke Pembeli/Penjual.
+ */
+export function isCourierConfirmedForOrder(order: {
+  status?: string
+  courier?: any
+  courierOfferedAt?: string | null
+}): boolean {
+  if (!order?.courier) return false
+  if (order.courierOfferedAt) return false
+  return ['accepted', 'shipped', 'delivering', 'delivered', 'completed'].includes(
+    order.status || ''
+  )
+}
+
+/**
  * Memilih kurir aktif secara adil berbasis antrean bergiliran (Round-Robin):
  * - Hanya kurir dengan `isActive === true` DAN `status === 'active'` DAN punya nomor WA.
  * - Mengecualikan kurir yang sudah menolak atau melewati batas waktu pada pesanan ini (`excludedIds`).
