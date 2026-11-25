@@ -188,6 +188,7 @@ export async function runCourierTimeoutCheck(options: {
     (await client.fetch(
       `*[_type == "order" && !(_id in path("drafts.**")) && status == "processing" && defined(courierOfferedAt)]{
         _id,
+        _rev,
         orderNumber,
         customerName,
         deliveryAddress,
@@ -212,9 +213,12 @@ export async function runCourierTimeoutCheck(options: {
     const elapsedMinutes = (nowMs - offeredMs) / 60000
     if (elapsedMinutes < timeoutMinutes) continue
 
-    skippedCount++
-    if (dryRun) continue
+    if (dryRun) {
+      skippedCount++
+      continue
+    }
 
+    const cleanOrderId = String(ord._id).replace(/^drafts\./, '')
     const currentCourierId = ord.courier?._id
     const currentCourierName = ord.courier?.name || 'Kurir sebelumnya'
     const currentCourierPhone = ord.courier?.phone
@@ -227,6 +231,36 @@ export async function runCourierTimeoutCheck(options: {
 
     const rrNext = await pickNextRoundRobinCourier(client, nextRejected)
 
+    // Kunci atomik via _rev agar beberapa proses server tidak mengirim WA ganda
+    try {
+      let lockPatch = client.patch(cleanOrderId)
+      if (ord._rev && typeof lockPatch.ifRevisionId === 'function') {
+        lockPatch = lockPatch.ifRevisionId(ord._rev)
+      }
+      if (rrNext.courier) {
+        await lockPatch
+          .set({
+            courier: { _type: 'reference', _ref: rrNext.courier._id },
+            courierOfferedAt: nowIso,
+            rejectedCourierIds: nextRejected,
+          })
+          .commit()
+      } else {
+        await lockPatch
+          .set({
+            courierOfferedAt: null,
+            rejectedCourierIds: nextRejected,
+          })
+          .unset(['courier'])
+          .commit()
+      }
+    } catch {
+      // Sudah diproses oleh worker/proses server lain
+      continue
+    }
+
+    skippedCount++
+
     if (currentCourierPhone) {
       await sendWhatsAppNotification(
         currentCourierPhone,
@@ -235,15 +269,6 @@ export async function runCourierTimeoutCheck(options: {
     }
 
     if (rrNext.courier) {
-      await client
-        .patch(ord._id.replace(/^drafts\./, ''))
-        .set({
-          courier: { _type: 'reference', _ref: rrNext.courier._id },
-          courierOfferedAt: nowIso,
-          rejectedCourierIds: nextRejected,
-        })
-        .commit()
-
       const offerMsg = buildCourierOfferMessage({
         baseUrl,
         orderNumber: ord.orderNumber,
@@ -274,15 +299,6 @@ export async function runCourierTimeoutCheck(options: {
         })
       )
     } else {
-      await client
-        .patch(ord._id.replace(/^drafts\./, ''))
-        .set({
-          courierOfferedAt: null,
-          rejectedCourierIds: nextRejected,
-        })
-        .unset(['courier'])
-        .commit()
-
       const noteText = `${currentCourierName} tidak merespons dan seluruh kurir aktif sudah melewati antrean. Mohon tugaskan lewat Pusat Kendali Admin.`
       alerts.push(`${ord.orderNumber}: ${noteText}`)
       await sendWhatsAppNotification(

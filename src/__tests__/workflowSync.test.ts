@@ -270,6 +270,7 @@ vi.mock('next-sanity', () => ({
           Object.assign(pendingSet, fields)
           return chain
         },
+        ifRevisionId: () => chain,
         unset: (fields: string[]) => {
           pendingUnset.push(...fields)
           return chain
