@@ -314,6 +314,7 @@ export const APP_SETTINGS_QUERY = defineQuery(`
     defaultCourierFloatCash,
     dailySettlementCutoffHour,
     maxSettlementDelayHours,
+    financeLedgerStartedAt,
     isMaintenance,
     isQrisEnabled,
     qrisMerchantName,

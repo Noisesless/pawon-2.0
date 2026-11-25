@@ -3,6 +3,7 @@ import {
   DEFAULT_FINANCE_CONFIG,
   assignOrderSettlementPeriodKey,
   isCutoffPassedForPeriod,
+  isOrderEligibleForCashLedger,
   computeOrderFinanceSnapshot,
   computeCourierLedgerSummary,
   syncDailyCourierSettlements,
@@ -266,5 +267,19 @@ describe('Courier 1-Link & Finance Kas Engine (6000 = 4000 Kurir + 2000 Kaluraha
     // Round-Robin WAJIB melewati Kurir Telat dan memilih Kurir Tertib
     const rr = await pickNextRoundRobinCourier(mockClient, [])
     expect(rr.courier?._id).toBe('courier-tertib')
+
+    // Order lama sebelum financeLedgerStartedAt otomatis diabaikan
+    expect(
+      isOrderEligibleForCashLedger(
+        { completedAt: '2026-06-09T09:00:00.000Z' },
+        '2026-11-25T06:35:00.000Z'
+      )
+    ).toBe(false)
+    expect(
+      isOrderEligibleForCashLedger(
+        { completedAt: '2026-11-25T06:40:00.000Z' },
+        '2026-11-25T06:35:00.000Z'
+      )
+    ).toBe(true)
   })
 })

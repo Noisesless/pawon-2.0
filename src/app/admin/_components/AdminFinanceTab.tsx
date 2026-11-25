@@ -18,10 +18,12 @@ import {
   resolveFinanceConfig,
   computeCourierLedgerSummary,
   assignOrderSettlementPeriodKey,
+  isOrderEligibleForCashLedger,
 } from '@/lib/courierFinanceEngine'
 import {
   syncCourierSettlementsAction,
   confirmCourierSettlementAction,
+  resetCourierFinanceLedgerAction,
 } from '@/app/actions/admin'
 
 interface AdminFinanceTabProps {
@@ -76,7 +78,11 @@ export default function AdminFinanceTab({
         activeOrdersByCourier.set(cid, { completed: [], inFlightCount: 0 })
       }
       const bucket = activeOrdersByCourier.get(cid)!
-      if (ord.status === 'completed' && !ord.settlementId) {
+      if (
+        ord.status === 'completed' &&
+        !ord.settlementId &&
+        isOrderEligibleForCashLedger(ord, finConfig.financeLedgerStartedAt)
+      ) {
         bucket.completed.push(ord)
       } else if (
         ['processing', 'accepted', 'shipped', 'delivering', 'delivered'].includes(
@@ -160,6 +166,26 @@ export default function AdminFinanceTab({
     }
   }
 
+  const handleResetLedger = async () => {
+    if (
+      !confirm(
+        'Reset seluruh rekap kas kurir menjadi nol dan mulai pencatatan buku baru dari sekarang?'
+      )
+    ) {
+      return
+    }
+    setSyncing(true)
+    setFeedback(null)
+    const res = await resetCourierFinanceLedgerAction()
+    setSyncing(false)
+    if (res.success) {
+      setFeedback('Seluruh rekap kas kurir telah di-reset bersih dan buku baru dimulai.')
+      await onRefresh()
+    } else {
+      alert(res.error || 'Gagal mereset buku kas kurir.')
+    }
+  }
+
   const handleConfirmSettlement = async (params: {
     settlementId?: string
     courierId: string
@@ -224,6 +250,15 @@ export default function AdminFinanceTab({
           >
             <Printer className="w-4 h-4" />
             <span>Cetak Rekap</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={handleResetLedger}
+            className="px-4 py-2.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-xs font-black hover:bg-rose-100 transition-colors disabled:opacity-50"
+          >
+            Reset Rekap Kas
           </button>
 
           <button

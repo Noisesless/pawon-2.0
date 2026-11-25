@@ -58,6 +58,12 @@ export const appSettingsType = defineType({
       initialValue: 48,
     }),
     defineField({
+      name: 'financeLedgerStartedAt',
+      title: 'Waktu Mulai Buku Kas Kurir',
+      type: 'datetime',
+      description: 'Order selesai sebelum waktu ini diabaikan dari rekap kas kurir.',
+    }),
+    defineField({
       name: 'siteName',
       title: 'Nama Aplikasi',
       type: 'string',

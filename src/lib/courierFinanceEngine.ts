@@ -11,6 +11,7 @@ export interface FinanceConfig {
   defaultCourierFloatCash: number
   dailySettlementCutoffHour: number
   maxSettlementDelayHours: number
+  financeLedgerStartedAt?: string | null
   adminPhone?: string
 }
 
@@ -21,9 +22,22 @@ export const DEFAULT_FINANCE_CONFIG: FinanceConfig = {
   defaultCourierFloatCash: 100000,
   dailySettlementCutoffHour: 16,
   maxSettlementDelayHours: 48,
+  financeLedgerStartedAt: null,
 }
 
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000
+
+export function isOrderEligibleForCashLedger(
+  order: { completedAt?: string; _updatedAt?: string; _createdAt?: string },
+  ledgerStartedAt?: string | null
+): boolean {
+  if (!ledgerStartedAt) return true
+  const startMs = new Date(ledgerStartedAt).getTime()
+  if (Number.isNaN(startMs)) return true
+  const ordMs = new Date(order.completedAt || order._updatedAt || order._createdAt || 0).getTime()
+  if (Number.isNaN(ordMs)) return false
+  return ordMs >= startMs
+}
 
 export function resolveFinanceConfig(rawSettings: any): FinanceConfig {
   const shippingFee =
@@ -57,6 +71,7 @@ export function resolveFinanceConfig(rawSettings: any): FinanceConfig {
       1,
       Number(rawSettings?.maxSettlementDelayHours ?? 48)
     ),
+    financeLedgerStartedAt: rawSettings?.financeLedgerStartedAt || null,
     adminPhone: rawSettings?.adminPhone || '+62895325586281',
   }
 }
@@ -353,6 +368,7 @@ export async function syncDailyCourierSettlements(options?: {
   for (const ord of unsettledCompletedOrders || []) {
     const cleanCourierId = String(ord.courierId || '').replace(/^drafts\./, '')
     if (!cleanCourierId || !courierMap.has(cleanCourierId)) continue
+    if (!isOrderEligibleForCashLedger(ord, config.financeLedgerStartedAt)) continue
     const completedIso = ord.completedAt || ord._updatedAt || ord._createdAt
     const periodKey = assignOrderSettlementPeriodKey(
       completedIso,

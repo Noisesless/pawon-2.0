@@ -7,6 +7,7 @@ import {
   resolveFinanceConfig,
   computeCourierLedgerSummary,
   assignOrderSettlementPeriodKey,
+  isOrderEligibleForCashLedger,
 } from '@/lib/courierFinanceEngine'
 
 const writeClient = createClient({
@@ -155,8 +156,11 @@ export async function getCourierFinanceSummary(courierId: string) {
       typeof courier?.customFloatCash === 'number'
         ? Math.max(0, courier.customFloatCash)
         : finConfig.defaultCourierFloatCash
+    const eligibleOrders = (openOrders || []).filter((ord: any) =>
+      isOrderEligibleForCashLedger(ord, finConfig.financeLedgerStartedAt)
+    )
     const liveSummary = computeCourierLedgerSummary(
-      openOrders || [],
+      eligibleOrders,
       openingFloatCash,
       finConfig
     )

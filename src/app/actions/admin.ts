@@ -10,6 +10,7 @@ import {
   assignOrderSettlementPeriodKey,
   wibDateHourToIso,
   syncDailyCourierSettlements,
+  isOrderEligibleForCashLedger,
 } from '@/lib/courierFinanceEngine'
 import { sendWhatsAppNotification } from '@/sanity/lib/whatsapp'
 
@@ -331,6 +332,7 @@ export async function fetchAdminDashboardData() {
           defaultCourierFloatCash,
           dailySettlementCutoffHour,
           maxSettlementDelayHours,
+          financeLedgerStartedAt,
           isMaintenance,
           isQrisEnabled,
           qrisMerchantName,
@@ -390,6 +392,7 @@ export async function fetchAdminDashboardData() {
       defaultCourierFloatCash: rawAppSettings?.defaultCourierFloatCash ?? 100000,
       dailySettlementCutoffHour: rawAppSettings?.dailySettlementCutoffHour ?? 16,
       maxSettlementDelayHours: rawAppSettings?.maxSettlementDelayHours ?? 48,
+      financeLedgerStartedAt: rawAppSettings?.financeLedgerStartedAt || null,
       isMaintenance: Boolean(rawAppSettings?.isMaintenance),
       isQrisEnabled: rawAppSettings?.isQrisEnabled !== false,
       qrisMerchantName: rawAppSettings?.qrisMerchantName || 'PAWON PONDOKREJO',
@@ -517,7 +520,7 @@ export async function saveAppSettings(data: {
 
     const parsed = parseQRIS(cleanPayload)
     const rawExisting = await writeClient.fetch(
-      `*[_type == "appSettings"]{_id, sopLastRunAt}`,
+      `*[_type == "appSettings"]{_id, sopLastRunAt, financeLedgerStartedAt}`,
       {},
       { cache: 'no-store' }
     )
@@ -604,6 +607,10 @@ export async function saveAppSettings(data: {
     const existingLastRun = existingDocs.find((d: any) => d.sopLastRunAt)?.sopLastRunAt
     if (existingLastRun) {
       docToSave.sopLastRunAt = existingLastRun
+    }
+    const existingLedgerStart = existingDocs.find((d: any) => d.financeLedgerStartedAt)?.financeLedgerStartedAt
+    if (existingLedgerStart) {
+      docToSave.financeLedgerStartedAt = existingLedgerStart
     }
 
     await writeClient.createOrReplace(docToSave)
@@ -836,6 +843,7 @@ export async function confirmCourierSettlementAction(params: {
       )
 
       const matchedOrders = (openOrders || []).filter((ord: any) => {
+        if (!isOrderEligibleForCashLedger(ord, finConfig.financeLedgerStartedAt)) return false
         if (!params.periodKey) return true
         const pKey = assignOrderSettlementPeriodKey(
           ord.completedAt || ord._updatedAt || ord._createdAt,
@@ -928,6 +936,54 @@ export async function confirmCourierSettlementAction(params: {
     return {
       success: false,
       error: error?.message || 'Gagal mengonfirmasi setoran kas kurir.',
+    }
+  }
+}
+
+/**
+ * Reset buku kas kurir: menghapus rekap setoran, membuka blokir seluruh kurir, dan menetapkan waktu mulai buku baru
+ */
+export async function resetCourierFinanceLedgerAction() {
+  try {
+    const nowIso = new Date().toISOString()
+    const [settlements, couriers, settingsDocs] = await Promise.all([
+      writeClient.fetch(`*[_type == "courierSettlement"]{_id}`, {}, { cache: 'no-store' }),
+      writeClient.fetch(`*[_type == "courier" && !(_id in path("drafts.**"))]{_id}`, {}, { cache: 'no-store' }),
+      writeClient.fetch(`*[_type == "appSettings"] | order(_updatedAt desc)[0]{_id}`, {}, { cache: 'no-store' }),
+    ])
+
+    for (const s of settlements || []) {
+      await Promise.allSettled([
+        writeClient.delete(s._id),
+        writeClient.delete(`drafts.${s._id.replace(/^drafts\./, '')}`),
+      ])
+    }
+
+    for (const c of couriers || []) {
+      const cid = canonicalId(c._id)
+      await writeClient
+        .patch(cid)
+        .set({
+          isSettlementBlocked: false,
+          settlementBlockedReason: '',
+          lastSettledAt: null,
+        })
+        .commit()
+        .catch(() => {})
+    }
+
+    const settingsId = settingsDocs?._id ? canonicalId(settingsDocs._id) : 'appSettings'
+    await writeClient
+      .patch(settingsId)
+      .set({ financeLedgerStartedAt: nowIso })
+      .commit()
+
+    return { success: true, startedAt: nowIso }
+  } catch (error: any) {
+    console.error('resetCourierFinanceLedgerAction error:', error)
+    return {
+      success: false,
+      error: error?.message || 'Gagal mereset buku kas kurir.',
     }
   }
 }
