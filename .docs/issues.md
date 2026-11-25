@@ -68,7 +68,25 @@ Dokumen ini mencatat daftar isu teknis aktif (OPEN) serta riwayat masalah yang t
 - **Solusi**:
   1. Seluruh pesan WA terpusat di `whatsapp.ts` tanpa emoji mentah maupun istilah teknis/database/production.
   2. Checkout COD 100% otomatis (WA Admin log-only 0 link); QRIS memakai verifikasi mutasi 1-klik Admin sebelum diteruskan otomatis.
-  3. Kurir memakai Round-Robin (`courier.lastAssignedAt`), tombol WA `Terima Order` / `Tolak Order`, serta auto-skip otomatis via `courierOfferedAt` + `sopCourierTimeoutMinutes` (`runCourierTimeoutCheck()` setiap 1 menit di production).
+  3. Kurir memakai Round-Robin (`courier.lastAssignedAt`), tombol WA `Terima Order` / `Tolak Order`, serta auto-skip otomatis via `courierOfferedAt` + `sopCourierTimeoutMinutes` (`runCourierTimeoutCheck()` setiap 1 menit di production dengan atomic `_rev` lock + pelestarian `courierOfferedAt` saat Penjual klik `shipped` lebih awal).
+
+### [ISS-011] Penyederhanaan 1 Tautan Simpel Kurir (`Ambil & Mulai Antar`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/sanity/lib/whatsapp.ts`, `src/app/kurir/_components/CourierDashboard.tsx`
+- **Solusi**: Setelah kurir klik `Terima Order`, WA dan Portal `/kurir` cukup menampilkan **1 tombol/tautan tunggal** `Ambil & Mulai Antar ke Pembeli` (`delivering`), baru di langkah berikutnya `Pesanan Sudah Diserahkan` (`delivered`).
+
+### [ISS-012] Sistem Keuangan Kas Kurir (Rp100.000, Split 6000=4000:2000, Cutoff 16.00 & Blokir 2x24 Jam)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/lib/courierFinanceEngine.ts`, `src/sanity/schemaTypes/courierSettlementType.ts`, `src/app/admin/_components/AdminFinanceTab.tsx`, `src/app/kurir/_components/CourierDashboard.tsx`
+- **Solusi**:
+  1. Menambah pengaturan ongkir `6000` (upah kurir `4000` + kas Kalurahan `2000`), kas awal kurir `100000`, cutoff harian `16:00 WIB`, serta dukungan dana talangan pribadi bila belanja ke penjual melebihi kas awal.
+  2. Kurir telat setor `> 24 jam` menerima WA pengingat, dan telat `> 48 jam` dibekukan otomatis dari antrean Round-Robin sampai Admin mengonfirmasi setoran/refill.
+  3. Menambah pengaman `financeLedgerStartedAt` & tombol **Reset Rekap Kas** agar transaksi historis tidak ikut tertarik saat buku kas direset.
+
+### [ISS-013] Identitas Kurir Antrean Bocor di Lacak Pesanan Sebelum `Terima Order`
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/lib/courierAssigner.ts`, `src/sanity/lib/queries.ts`, `src/app/track/[orderNumber]/page.tsx`, `src/app/mobile/track/[orderNumber]/page.tsx`, `src/app/lapak/_components/VendorDashboard.tsx`, `src/app/actions/order.ts`
+- **Solusi**: Menambahkan `isCourierConfirmedForOrder()` agar nama dan WA kurir hanya muncul di halaman lacak, portal penjual, dan WA pembeli setelah kurir benar-benar mengklik `Terima Order` (`courierOfferedAt == null`).
 
 ---
 

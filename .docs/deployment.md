@@ -34,7 +34,7 @@ Dokumen ini menjelaskan tata cara deployment aplikasi **PAWON** dari lingkungan 
 Aplikasi dilengkapi proteksi otomatis berbasis `NODE_ENV` pada `src/instrumentation.ts`:
 - **Di Local Development (`NODE_ENV=development`)**: Background interval worker **NONAKTIF secara default**. Jika ingin menguji mekanisme SOP di lokal, gunakan tombol **"Cek SOP"** (*Dry-Run*) di `/admin` tab Pesanan atau jalankan `GET /api/cron/order-sop?dryRun=true`.
 - **Di Production (`NODE_ENV=production`)**:
-  1. **Internal Instrumentation Worker (Default Active)**: Begitu `next start` berjalan di PM2/CloudPanel, `src/instrumentation.ts` menyala otomatis (pengecekan batas waktu pesan **10 menit**, serta pengecekan cepat **auto-skip antrean kurir setiap 1 menit**).
+  1. **Internal Instrumentation Worker (Default Active)**: Begitu `next start` berjalan di PM2/CloudPanel, `src/instrumentation.ts` menyala otomatis: pengecekan SOP kedaluwarsa (**10 menit**), auto-skip antrean kurir (**1 menit**), serta tutup buku kas `16:00 WIB` & blokir `> 48 jam` (**5 menit**).
   2. **External Crontab Backup (Opsional / Disarankan jika container idle)**:
      ```cron
      # Setiap 15 menit via crontab server Ubuntu
@@ -45,11 +45,12 @@ Aplikasi dilengkapi proteksi otomatis berbasis `NODE_ENV` pada `src/instrumentat
 
 ## 4. Checklist Pra-Deployment (Pre-Deploy)
 
-- [ ] Variabel lingkungan produksi (`SANITY_API_WRITE_TOKEN`, `FONNTE_TOKEN`, `NEXT_PUBLIC_BASE_URL`, `CRON_SECRET`) terpasang di server.
+- [ ] Variabel lingkungan produksi (`SANITY_API_WRITE_TOKEN`, `FONNTE_TOKEN`, `NEXT_PUBLIC_BASE_URL`, `CRON_SECRET`) terpasang di server (pastikan format `.env` bersih berbaris baru antar variabel).
+- [ ] Pastikan hanya 1 instance proses PM2 aktif di port yang dirujuk Nginx Reverse Proxy (hindari proses duplikat yang menggandakan notifikasi worker).
 - [ ] `npx tsc --noEmit` dan `npx vitest run` lulus bersih sebelum push.
-- [ ] Pemindaian rahasia bersih (`.env*` & folder `temp/` tidak membawa token ke repo publik).
+- [ ] Pemindaian rahasia bersih (`.env*`, `app-context.md`, & folder `temp/` tidak membawa token ke repo publik).
 - [ ] CORS origin pada Sanity Manage mengizinkan `https://pawon.pondokrejo.id`.
-- [ ] Pada `/admin` tab **Pengaturan & QRIS**, pastikan string **QRIS Statis resmi** Kalurahan/UMKM telah diisi (atau matikan toggle QRIS jika masih tahap pengurusan).
+- [ ] Pada `/admin` tab **Pengaturan & QRIS**, pastikan tarif ongkir (`6000`), upah kurir (`4000`), kas Kalurahan (`2000`), kas awal (`100000`), dan **QRIS Statis resmi** telah terkonfigurasi. Gunakan tombol **Reset Rekap Kas** di tab **Keuangan Kurir** sebelum hari perdana operasional agar order lama tidak masuk buku baru.
 - [ ] Sertifikat SSL Let's Encrypt aktif di Nginx CloudPanel.
 
 ---

@@ -11,7 +11,7 @@ Dokumen ini memetakan seluruh rute aktif pada aplikasi **PAWON**, baik tampilan 
 | Route Path | File Path | Page Title | Auth / Peran | Status |
 |---|---|---|---|---|
 | `/` | `src/app/page.tsx` | Beranda Pasar Warga Pondokrejo | Publik | STABLE |
-| `/admin` | `src/app/admin/page.tsx` | Pusat Kendali Admin Kalurahan (6-Tab Zero-Draft + QRIS + SOP) | PIN Admin (`appSettings.adminPin`) | STABLE |
+| `/admin` | `src/app/admin/page.tsx` | Pusat Kendali Admin Kalurahan (7-Tab Zero-Draft + Keuangan Kurir + QRIS + SOP) | PIN Admin (`appSettings.adminPin`) | STABLE |
 | `/cart` | `src/app/cart/page.tsx` | Keranjang Belanja Warga (Ongkir Dinamis) | Publik | STABLE |
 | `/categories` | `src/app/categories/page.tsx` | Kategori Produk & Jasa | Publik | STABLE |
 | `/checkout` | `src/app/checkout/page.tsx` | Checkout & Dynamic QRIS / COD | Publik / Warga | STABLE |
@@ -19,7 +19,7 @@ Dokumen ini memetakan seluruh rute aktif pada aplikasi **PAWON**, baik tampilan 
 | `/info/[slug]` | `src/app/info/[slug]/page.tsx` | Detail Berita & Panduan | Publik | STABLE |
 | `/inkubator` | `src/app/inkubator/page.tsx` | Inkubator Bisnis & Layanan UMKM | Publik | STABLE |
 | `/inkubator/[slug]` | `src/app/inkubator/[slug]/page.tsx` | Detail Layanan Inkubator | Publik | STABLE |
-| `/kurir` | `src/app/kurir/page.tsx` | Portal Tugas Kurir Kalurahan | Kurir (WA + PIN) | STABLE |
+| `/kurir` | `src/app/kurir/page.tsx` | Portal Tugas & Ringkasan Kas Awal/Upah Kurir Kalurahan | Kurir (WA + PIN) | STABLE |
 | `/lapak` | `src/app/lapak/page.tsx` | Portal Manajemen Lapak Penjual | Penjual UMKM (WA + PIN) | STABLE |
 | `/manual/admin` | `src/app/manual/admin/page.tsx` | Panduan Operasional Petugas Admin | Admin | STABLE |
 | `/manual/kurir` | `src/app/manual/kurir/page.tsx` | Panduan Pengantaran Petugas Kurir | Kurir | STABLE |
@@ -70,7 +70,7 @@ Dokumen ini memetakan seluruh rute aktif pada aplikasi **PAWON**, baik tampilan 
 | `GET` | `/api/version` (`src/app/api/version/route.ts`) | Publik | Diagnostik anti-cache & pengecekan versi runtime server |
 | `GET` | `/api/debug-couriers` (`src/app/api/debug-couriers/route.ts`) | Internal Admin | Pengecekan daftar kurir aktif & Magic Link COD |
 | `GET` | `/api/cron/order-sop` (`src/app/api/cron/order-sop/route.ts`) | `CRON_SECRET` (Bearer/Query) | Trigger eksternal SOP auto-cancel/auto-complete pesanan (`?dryRun=true`, `?force=true`) |
-| `register()` | `src/instrumentation.ts` | Server Startup Hook | Background SOP worker tiap 10 menit + cek cepat auto-skip kurir tiap 1 menit (aktif di `NODE_ENV=production`) |
+| `register()` | `src/instrumentation.ts` | Server Startup Hook | Background SOP worker tiap 10 menit + auto-skip kurir tiap 1 menit + tutup buku kas `16:00 WIB` & batas 48 jam tiap 5 menit (aktif di `NODE_ENV=production`) |
 
 ---
 

@@ -15,6 +15,7 @@ erDiagram
     CATEGORY ||--o{ SERVICE : "kategorisasi"
     CUSTOMER ||--o{ ORDER : "memesan"
     COURIER ||--o{ ORDER : "mengantar"
+    COURIER ||--o{ COURIER_SETTLEMENT : "rekonsiliasi harian"
     ORDER ||--|{ ORDER_ITEM : "berisi"
     ORDER_ITEM }|--|| PRODUCT : "merujuk"
     ORDER ||--o| SERVICE : "jasa yang dipesan"
@@ -131,6 +132,8 @@ erDiagram
 - `name` (String, Required), `phone` (String, Required), `pin` (String, 4–6 digit, untuk login `/kurir`)
 - `isActive` (Boolean), `statusMessage` (String), `status` (`active` | `inactive`)
 - `lastAssignedAt` (Datetime, ReadOnly): Stempel waktu giliran Round-Robin terakhir kurir menerima tugas.
+- `customFloatCash` (Number, Opsional): Override kas awal kurir bila berbeda dari default `Rp100.000`.
+- `isSettlementBlocked` (Boolean, ReadOnly), `settlementBlockedReason` (String, ReadOnly), `lastSettledAt` (Datetime, ReadOnly): Penanda pembekuan otomatis antrean bila laporan kas tertunda `> 48 jam` (`2x24 jam`).
 
 ### 5. `customer` (`customerType.ts`)
 - `name` (String, Required), `phone` (String, Required), `address` (Text, Required)
@@ -142,34 +145,34 @@ erDiagram
 - `orderCategory` (`product` | `service`), `serviceItem` (Reference → `service`), `serviceDate` (Datetime)
 - `items` (Array of Object: `product` Ref, `quantity`, `price`)
 - `totalAmount` (Number), `shippingFee` (Number)
+- **Snapshot Finansial**: `productSubtotal` (Number), `courierCommissionAmount` (Number), `kalurahanFeeAmount` (Number), `completedAt` (Datetime), `exceededFloatCash` (Boolean), `settlementId` (String).
 - `paymentMethod` (`cod` | `qris`), `paymentStatus` (`unpaid` | `paid`)
 - `status`: `pending` | `accepted` | `processing` | `shipped` | `delivering` | `delivered` | `completed` | `cancelled` | `problem`
 - `courier` (Reference → `courier`), `courierNotes` (Text), `vendorId_for_query_only` (String, hidden)
-- `autoResolutionReason` (String, ReadOnly): Alasan penutupan otomatis oleh Order SOP Engine (misal: melewati batas jam pending/processing/delivered).
-- `courierOfferedAt` (Datetime, ReadOnly): Waktu penawaran antrean Round-Robin ke kurir aktif saat ini (untuk mekanisme auto-skip).
-- `rejectedCourierIds` (Array of String, ReadOnly): Daftar ID kurir yang sudah menolak atau terlewati batas waktu pada order ini.
+- `autoResolutionReason` (String, ReadOnly), `courierOfferedAt` (Datetime, ReadOnly), `rejectedCourierIds` (Array of String, ReadOnly).
 
 ### 7. `appSettings` (`appSettingsType.ts`)
-- **Identitas & Operasional Dasar**:
-  - `adminPhone` (String, Required): Nomor WA Admin Pusat penerima notifikasi transaksi.
-  - `defaultShippingFee` (Number, initial: `5000`): Biaya ongkir standar kalurahan.
-  - `siteName` (String, initial: `PAWON PONDOKREJO`), `isMaintenance` (Boolean)
-  - `adminPin` (String): PIN autentikasi dasbor `/admin` *(dikonfigurasi aman di Sanity `appSettings`)*.
+- **Identitas & Tarif Operasional**:
+  - `adminPhone` (String, Required), `siteName` (String, initial: `PAWON PONDOKREJO`), `isMaintenance` (Boolean), `adminPin` (String).
+  - `defaultShippingFee` (Number, initial: `6000`): Ongkir pembeli flat kalurahan.
+  - `courierCommissionAmount` (Number, initial: `4000`): Upah kurir per pesanan selesai.
+  - `kalurahanFeeAmount` (Number, initial: `2000`): Porsi kas Kalurahan/PAWON per pesanan selesai.
+  - `defaultCourierFloatCash` (Number, initial: `100000`): Kas awal harian tiap kurir.
+  - `dailySettlementCutoffHour` (Number, initial: `16`): Jam tutup buku harian WIB (`16:00 WIB`).
+  - `maxSettlementDelayHours` (Number, initial: `48`): Batas tunda maksimal (`2x24 jam`) sebelum kurir dibekukan.
+  - `financeLedgerStartedAt` (Datetime): Batas awal aktivasi buku kas kurir (order sebelum stempel ini diabaikan).
 - **Dynamic QRIS EMVCo Settings**:
-  - `isQrisEnabled` (Boolean, initial: `true`): Saklar aktif/nonaktif metode pembayaran QRIS di checkout.
-  - `qrisMerchantName` (String, max 25 karakter, initial: `PAWON PONDOKREJO`).
-  - `qrisNmid` (String, initial: `ID1026574925990`).
-  - `qrisStaticPayload` (Text, validasi kustom `validateCRC16`): String QRIS Statis resmi yang dikonversi otomatis ke QRIS Dinamis per pesanan.
+  - `isQrisEnabled` (Boolean), `qrisMerchantName` (String), `qrisNmid` (String), `qrisStaticPayload` (Text, validasi `validateCRC16`).
 - **Order SOP & SLA Settings**:
-  - `isSopAutoEnabled` (Boolean, initial: `true`): Saklar utama worker SOP otomatis.
-  - `sopPendingCancelHours` (Number, initial: `24`): Batas jam batal otomatis pesanan `pending`.
-  - `sopStuckWarningHours` (Number, initial: `4`): Batas jam penanda peringatan pesanan macet di `/admin`.
-  - `sopDeliveredCompleteHours` (Number, initial: `24`): Batas jam selesai otomatis setelah `delivered`.
-  - `sopProcessingCancelHours` (Number, initial: `48`): Batas jam batal otomatis pesanan `accepted`/`processing`/`shipped`/`delivering` yang macet.
-  - `sopCourierTimeoutMinutes` (Number, initial: `5`): Batas menit respons kurir Round-Robin sebelum dialihkan otomatis ke kurir berikutnya.
-  - `sopLastRunAt` (Datetime, ReadOnly): Stempel waktu eksekusi worker SOP terakhir.
+  - `isSopAutoEnabled` (Boolean), `sopPendingCancelHours` (`24`), `sopStuckWarningHours` (`4`), `sopDeliveredCompleteHours` (`24`), `sopProcessingCancelHours` (`48`), `sopCourierTimeoutMinutes` (`5`), `sopLastRunAt` (Datetime, ReadOnly).
 
-### 8. Skema Pendukung Lainnya
+### 8. `courierSettlement` (`courierSettlementType.ts`)
+- Buku laporan kas harian per kurir per periode (`settlement-<courierId>-YYYY-MM-DD`):
+  - `periodKey`, `courier` (Reference → `courier`), `courierName`, `courierPhone`, `cutoffAt`, `dueAt`
+  - `openingFloatCash`, `orderCount`, `orderNumbers`, `codOrderTotal`, `qrisOrderTotal`, `sellerCashPaid`, `courierCommissionTotal`, `kalurahanFeeTotal`, `endingCashInHand`, `kurirOutOfPocket`, `netContinueNextDay`, `netFullClose`
+  - `settlementMode` (`continue_float` | `full_return`), `status` (`waiting_settlement` | `overdue_warning` | `blocked_overdue` | `settled`), `warning24SentAt`, `blocked48SentAt`, `settledAt`, `settledAmount`, `notes`.
+
+### 9. Skema Pendukung Lainnya
 - `category` (`categoryType.ts`), `banner` (`bannerType.ts`), `article` (`articleType.ts`)
 - `incubatorService` (`incubatorServiceType.ts`), `incubatorSettings` (`incubatorSettingsType.ts`)
 
@@ -179,5 +182,5 @@ erDiagram
 
 1. **Katalog Produk Beranda (`PRODUCTS_QUERY`)**: Mengambil produk beserta proyeksi `vendor` dan `categories`.
 2. **Kategori Dinamis (`CATEGORIES_QUERY`)**: Menghitung `productCount` dan `serviceCount` via `count(*[references(^._id)])`.
-3. **Konfigurasi Global (`APP_SETTINGS_QUERY`)**: Mengambil seluruh pengaturan `appSettings` (kontak admin, ongkir, QRIS config, dan SOP SLA config) untuk dipakai checkout, cart, inkubator, serta worker SOP.
-4. **Pelacakan & Admin (`ORDER_BY_NUMBER_QUERY`, Dashboard Queries)**: Menampilkan detail pesanan lengkap dengan relasi `customer`, `courier`, `items[].product`, dan `autoResolutionReason`.
+3. **Konfigurasi Global (`APP_SETTINGS_QUERY`)**: Mengambil pengaturan `appSettings` (kontak admin, tarif `6000/4000/2000`, kas `100000`, cutoff `16`, batas `48`, `financeLedgerStartedAt`, QRIS config, dan SOP SLA).
+4. **Pelacakan & Admin (`ORDER_BY_NUMBER_QUERY`, Dashboard Queries)**: Menampilkan detail pesanan lengkap (termasuk `courierOfferedAt` untuk menyembunyikan nama kurir antrean sebelum diterima).

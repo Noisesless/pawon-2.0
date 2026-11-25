@@ -11,14 +11,14 @@
 - **Checkout COD & Dynamic QRIS (EMVCo)**: Pembayaran tunai di tempat (COD) atau **Dynamic QRIS** dengan injeksi nominal tagihan tepat (TLV Tag `54` + validasi checksum CRC-16) dan opsi unduh kartu QRIS PNG siap scan.
 
 ### 🛡️ Pusat Kendali Admin Zero-Draft (`/admin`)
-- **6-Tab Manajemen Langsung**: Kelola Pesanan, Mitra & Warga (UMKM, Kurir, Pembeli), Katalog & Kategori, Konten & Banner, Inkubator UMKM, serta Pengaturan Global & QRIS tanpa hambatan dokumen `drafts.*`.
-- **Analitik & Pengelompokan Transaksi**: KPI interaktif, grup pesanan berjenjang (**Bulan > Minggu > Hari**) dengan *auto-collapse* akordeon, mode tampilan Tabel/Kartu, rincian subtotal + ongkir, tautan koordinasi WhatsApp 3-arah, serta ekspor CSV.
-- **Kurir Round-Robin & Auto-Skip**: Penugasan kurir bergiliran adil (`lastAssignedAt`), opsi **Terima/Tolak Order** langsung di WA & `/kurir`, serta pengalihan otomatis jika kurir melewati batas waktu respons.
-- **Order SOP Worker**: Penutupan otomatis pesanan kedaluwarsa (`pending`/`processing` batal otomatis, `delivered` selesai otomatis) melalui worker production (`src/instrumentation.ts`) dan endpoint `/api/cron/order-sop`.
+- **7-Tab Manajemen Langsung**: Kelola **Pesanan**, **Keuangan Kurir** (kas awal `Rp100.000`, rekap setor/refill jam `16:00 WIB`, dana talangan, & blokir `> 2x24 jam`), **Mitra & Warga**, **Katalog & Kategori**, **Konten & Banner**, **Inkubator UMKM**, serta **Pengaturan & QRIS** tanpa hambatan dokumen `drafts.*`.
+- **Analitik & Pengelompokan Transaksi**: KPI interaktif, grup pesanan berjenjang (**Bulan > Minggu > Hari**) dengan *auto-collapse* akordeon, mode tampilan Tabel/Kartu, rincian subtotal + ongkir (`Rp6.000` = `Rp4.000` kurir + `Rp2.000` Kalurahan), tautan koordinasi WhatsApp 3-arah, serta ekspor CSV.
+- **Kurir Round-Robin & Auto-Skip**: Penugasan kurir bergiliran adil (`lastAssignedAt`), opsi **Terima/Tolak Order** langsung di WA & `/kurir`, pengalihan otomatis jika melewati batas waktu respons, serta privasi identitas kurir antrean hingga kurir menyanggupi tugas.
+- **Order SOP & Settlement Worker**: Penutupan otomatis pesanan kedaluwarsa (10m), auto-skip kurir (1m), serta tutup buku kas harian `16:00 WIB` & pembekuan tunggakan `> 48 jam` (5m) melalui `src/instrumentation.ts` dan `/api/cron/order-sop`.
 
 ### 🚚 Portal Mandiri & Notifikasi Multi-Channel
 - **Portal Penjual (`/lapak`)**: Autentikasi WA (`08`/`628`) + PIN untuk kelola **Pesanan Masuk**, buka/tutup toko, serta kelola produk/jasa.
-- **Portal Kurir (`/kurir`)**: Autentikasi WA (`08`/`628`) + PIN untuk status aktif bertugas, terima/tolak antaran, dan pembaruan status pengiriman bertahap.
+- **Portal Kurir (`/kurir`)**: Autentikasi WA (`08`/`628`) + PIN dengan **1 tombol/tautan simpel `Ambil & Mulai Antar`**, kartu **Kas Awal & Upah Harian**, serta status aktif bertugas.
 - **WhatsApp Gateway (Fonnte)**: Notifikasi otomatis bebas emoji dengan tautan konfirmasi bertanda tangan HMAC; transaksi COD berjalan otomatis penuh (**Admin log-only**) dan QRIS memakai konfirmasi mutasi 1-klik Admin.
 
 ### 📱 Adaptive Mobile Experience (PWA)

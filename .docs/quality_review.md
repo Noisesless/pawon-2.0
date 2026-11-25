@@ -13,8 +13,8 @@ Dokumen ini mencatat status kesehatan kode terkini, cakupan automated testing, t
 | **Server-First Architecture** | 🟢 Baik | Pemisahan tegas antara Server Components, Client Components, dan Server Actions (`src/app/actions/` — 13 modul). |
 | **Admin Zero-Draft Architecture** | 🟢 Baik | Seluruh CRUD admin (`/admin`) menargetkan dokumen published langsung (mengeliminasi `drafts.*` trap). |
 | **Dynamic QRIS & SOP Engines** | 🟢 Teruji | Logika TLV EMVCo (`qrisEngine.ts`) dan klasifikasi SLA (`orderSopEngine.ts`) dipisahkan sebagai pure functions teruji. |
-| **Automated Testing (Vitest)** | 🟢 Baik | **6 file test** (total **17 test case** di `qrisEngine`, `orderSopEngine`, `workflowSync`, `cart`, `order`, dan `AddToCartButton`) menggunakan Vitest v4 + RTL. |
-| **Alur Transaksi Multi-Pihak** | 🟢 Selesai & Teruji | Round-Robin kurir, auto-skip timeout, COD otomatis (Admin log-only), Hybrid QRIS, HMAC action-link guard, serta portal `/lapak` & `/kurir` telah diperbaiki (`ISS-005` s.d. `ISS-010`). |
+| **Automated Testing (Vitest)** | 🟢 Baik | **7 file test** (total **22 test case** di `courierFinance`, `qrisEngine`, `orderSopEngine`, `workflowSync`, `cart`, `order`, dan `AddToCartButton`) menggunakan Vitest v4 + RTL. |
+| **Alur Transaksi Multi-Pihak & Keuangan** | 🟢 Selesai & Teruji | Round-Robin kurir (`isSettlementBlocked` filter & `isCourierConfirmedForOrder` guard), auto-skip atomic `_rev` lock, 1-link `Ambil & Mulai Antar`, COD otomatis, Hybrid QRIS, serta kas awal/setoran kurir (`16:00 WIB` & blokir `48 jam`) sudah selesai & teruji (`ISS-005` s.d. `ISS-013`). |
 | **Next.js 16 Conventions** | 🟡 Perlu Modernisasi | Peringatan deprecation runtime (`middleware.ts`, `themeColor`, `@sanity/image-url`, `defineLive`) masih berlaku untuk roadmap cleanup berikutnya. |
 
 ---
