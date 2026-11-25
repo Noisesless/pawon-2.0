@@ -13,6 +13,7 @@ export async function register() {
   const globalState = globalThis as unknown as {
     __pawonSopInterval?: ReturnType<typeof setInterval>
     __pawonCourierInterval?: ReturnType<typeof setInterval>
+    __pawonSettlementInterval?: ReturnType<typeof setInterval>
   }
 
   if (globalState.__pawonSopInterval) return
@@ -20,6 +21,7 @@ export async function register() {
   const { runOrderSopEvaluation, runCourierTimeoutCheck } = await import(
     '@/lib/orderSopEngine'
   )
+  const { syncDailyCourierSettlements } = await import('@/lib/courierFinanceEngine')
 
   const executeSopTick = async () => {
     try {
@@ -52,5 +54,23 @@ export async function register() {
   // Cek cepat antrean kurir tidak merespons setiap 1 menit
   if (!globalState.__pawonCourierInterval) {
     globalState.__pawonCourierInterval = setInterval(executeCourierQueueTick, 60 * 1000)
+  }
+
+  // Cek tutup buku harian jam 16.00 WIB & tunggakan 2x24 jam setiap 5 menit
+  const executeSettlementTick = async () => {
+    try {
+      const res = await syncDailyCourierSettlements({ dryRun: false })
+      if (res.createdCount > 0 || res.blockedCount > 0 || res.warnedCount > 0) {
+        console.log(
+          `[PAWON Courier Settlement] created=${res.createdCount}, warned=${res.warnedCount}, blocked=${res.blockedCount}`
+        )
+      }
+    } catch (err) {
+      console.error('[PAWON Courier Settlement] Tick error:', err)
+    }
+  }
+  if (!globalState.__pawonSettlementInterval) {
+    setTimeout(executeSettlementTick, 45 * 1000)
+    globalState.__pawonSettlementInterval = setInterval(executeSettlementTick, 5 * 60 * 1000)
   }
 }

@@ -1,7 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { updateCourierStatus, getCourierOrders } from '@/app/actions/courier-portal'
+import {
+  updateCourierStatus,
+  getCourierOrders,
+  getCourierFinanceSummary,
+} from '@/app/actions/courier-portal'
 import { updateOrderStatus } from '@/app/actions/order'
 import {
   LogOut,
@@ -15,6 +19,8 @@ import {
   Truck,
   AlertTriangle,
   XCircle,
+  Wallet,
+  ShieldAlert,
 } from 'lucide-react'
 
 interface Props {
@@ -26,6 +32,7 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
   const [isActive, setIsActive] = useState(initialData.isActive)
   const [statusMessage, setStatusMessage] = useState(initialData.statusMessage || '')
   const [orders, setOrders] = useState<any[]>([])
+  const [finance, setFinance] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -36,8 +43,12 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
 
   const fetchOrders = async () => {
     setLoading(true)
-    const res = await getCourierOrders(initialData._id)
-    if (res.success) setOrders(res.data)
+    const [ordRes, finRes] = await Promise.all([
+      getCourierOrders(initialData._id),
+      getCourierFinanceSummary(initialData._id),
+    ])
+    if (ordRes.success) setOrders(ordRes.data)
+    if (finRes.success) setFinance(finRes.data)
     setLoading(false)
   }
 
@@ -76,6 +87,94 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
             <LogOut className="w-6 h-6" />
           </button>
         </div>
+
+        {/* Ringkasan Kas & Upah Harian */}
+        {finance && (
+          <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 mb-6 space-y-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 rounded-xl">
+                  <Wallet className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-sm">Kas Awal &amp; Upah Anda</h3>
+                  <p className="text-[11px] font-bold text-slate-400">
+                    Periode {finance.currentPeriodKey} | Reset {String(finance.cutoffHour).padStart(2, '0')}:00 WIB
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-black text-slate-700 bg-slate-100 px-3 py-1 rounded-full">
+                Modal Rp{Number(finance.openingFloatCash || 0).toLocaleString('id-ID')}
+              </span>
+            </div>
+
+            {finance.isSettlementBlocked && (
+              <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-start gap-2.5">
+                <ShieldAlert className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-black">Giliran Pengantaran Dibekukan Sementara</p>
+                  <p className="mt-0.5">
+                    {finance.settlementBlockedReason ||
+                      'Laporan setoran kas Anda melewati batas 2x24 jam. Segera selesaikan dengan Admin Kalurahan.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-2.5 text-center bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400">Selesai</p>
+                <p className="text-sm font-black text-slate-900">
+                  {finance.liveSummary.orderCount} Order
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400">Upah Anda</p>
+                <p className="text-sm font-black text-emerald-700">
+                  Rp{Number(finance.liveSummary.courierCommissionTotal || 0).toLocaleString('id-ID')}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400">
+                  {finance.liveSummary.netContinueNextDay >= 0 ? 'Setor Admin' : 'Refill Admin'}
+                </p>
+                <p
+                  className={`text-sm font-black ${
+                    finance.liveSummary.netContinueNextDay >= 0
+                      ? 'text-slate-900'
+                      : 'text-rose-600'
+                  }`}
+                >
+                  Rp{Math.abs(Math.round(finance.liveSummary.netContinueNextDay || 0)).toLocaleString('id-ID')}
+                </p>
+              </div>
+            </div>
+
+            {Array.isArray(finance.openSettlements) && finance.openSettlements.length > 0 && (
+              <div className="space-y-2">
+                {finance.openSettlements.map((st: any) => (
+                  <div
+                    key={st._id}
+                    className={`p-3 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 ${
+                      st.status === 'blocked_overdue'
+                        ? 'bg-red-50 text-red-700 border border-red-200'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    }`}
+                  >
+                    <span>
+                      Tagihan {st.periodKey} ({st.orderCount} order)
+                    </span>
+                    <span className="font-black">
+                      {Number(st.netContinueNextDay || 0) >= 0
+                        ? `Setor Rp${Math.round(st.netContinueNextDay).toLocaleString('id-ID')}`
+                        : `Refill Rp${Math.abs(Math.round(st.netContinueNextDay)).toLocaleString('id-ID')}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Kurir Status Section */}
         <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 mb-8">
@@ -206,49 +305,19 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
                         </button>
                       </>
                     )}
-                    {order.status === 'accepted' && (
-                      <>
-                        <button
-                          onClick={() =>
-                            quickUpdateOrder(
-                              order.orderNumber,
-                              'shipped',
-                              'Barang diambil kurir dari penjual'
-                            )
-                          }
-                          className="py-4 bg-orange-50 text-orange-700 font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Package className="w-4 h-4" />
-                          <span>Barang Diambil</span>
-                        </button>
-                        <button
-                          onClick={() =>
-                            quickUpdateOrder(
-                              order.orderNumber,
-                              'delivering',
-                              'Kurir mulai mengantar ke pembeli'
-                            )
-                          }
-                          className="py-4 bg-purple-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Truck className="w-4 h-4" />
-                          <span>Mulai Antar</span>
-                        </button>
-                      </>
-                    )}
-                    {order.status === 'shipped' && (
+                    {(order.status === 'accepted' || order.status === 'shipped') && (
                       <button
                         onClick={() =>
                           quickUpdateOrder(
                             order.orderNumber,
                             'delivering',
-                            'Mulai pengiriman ke warga'
+                            'Barang diambil dari penjual dan mulai jalan antar ke pembeli'
                           )
                         }
                         className="col-span-2 py-4 bg-purple-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         <Truck className="w-4 h-4" />
-                        <span>Mulai Antar ke Pembeli</span>
+                        <span>Ambil &amp; Mulai Antar ke Pembeli</span>
                       </button>
                     )}
                     {order.status === 'delivering' && (

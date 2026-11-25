@@ -21,6 +21,10 @@ import { APP_SETTINGS_QUERY } from '@/sanity/lib/queries'
 import { DEFAULT_PAWON_STATIC_QRIS, parseQRIS, validateCRC16 } from '@/lib/qrisEngine'
 import { verifyOrderActionToken, normalizePhoneTo62 } from '@/lib/actionToken'
 import { pickNextRoundRobinCourier } from '@/lib/courierAssigner'
+import {
+  resolveFinanceConfig,
+  computeOrderFinanceSnapshot,
+} from '@/lib/courierFinanceEngine'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -72,7 +76,7 @@ export async function getPublicPaymentSettings() {
           'ID1026574925990',
         qrisStaticPayload: activeStaticPayload,
         isUsingDemoPayload: !hasValidCustomPayload,
-        defaultShippingFee: settings?.defaultShippingFee ?? 5000,
+        defaultShippingFee: settings?.defaultShippingFee ?? 6000,
       },
     }
   } catch (err) {
@@ -85,7 +89,7 @@ export async function getPublicPaymentSettings() {
         qrisNmid: 'ID1026574925990',
         qrisStaticPayload: DEFAULT_PAWON_STATIC_QRIS,
         isUsingDemoPayload: true,
-        defaultShippingFee: 5000,
+        defaultShippingFee: 6000,
       },
     }
   }
@@ -222,6 +226,17 @@ export async function createOrder(
       ? await pickNextRoundRobinCourier(writeClient, [])
       : { courier: null, totalActiveCount: 0, remainingCount: 0 }
 
+    const finConfig = resolveFinanceConfig(settings)
+    const finSnap = computeOrderFinanceSnapshot(
+      {
+        orderCategory: 'product',
+        totalAmount,
+        shippingFee,
+        items: resolvedItems.map((it) => ({ price: it.price, quantity: it.quantity })),
+      },
+      finConfig
+    )
+
     const doc: any = {
       _type: 'order',
       orderCategory: 'product',
@@ -231,6 +246,10 @@ export async function createOrder(
       deliveryAddress: formData.address,
       totalAmount,
       shippingFee,
+      productSubtotal: finSnap.productSubtotal,
+      courierCommissionAmount: finSnap.courierCommissionAmount,
+      kalurahanFeeAmount: finSnap.kalurahanFeeAmount,
+      exceededFloatCash: finSnap.exceededFloatCash,
       paymentMethod: isQris ? 'qris' : 'cod',
       paymentStatus: 'unpaid',
       status: isQris ? 'pending' : 'processing',
@@ -375,9 +394,10 @@ export async function updateOrderStatus(
         `*[_type == "order" && orderNumber == $orderNumber][0]{
           _id, orderNumber, orderCategory, customerName, customerPhone, deliveryAddress,
           totalAmount, shippingFee, paymentMethod, paymentStatus, status,
+          productSubtotal, courierCommissionAmount, kalurahanFeeAmount, exceededFloatCash,
           courierOfferedAt, rejectedCourierIds,
           "customerId": customer._ref,
-          courier->{_id, phone, name},
+          courier->{_id, phone, name, customFloatCash},
           items[]{
             quantity,
             price,
@@ -856,8 +876,21 @@ export async function updateOrderStatus(
       status: newStatus,
       courierOfferedAt: null,
     }
-    if (newStatus === 'completed' && order.paymentMethod !== 'qris') {
-      patchUpdates.paymentStatus = 'paid'
+    if (newStatus === 'completed') {
+      if (order.paymentMethod !== 'qris') {
+        patchUpdates.paymentStatus = 'paid'
+      }
+      patchUpdates.completedAt = new Date().toISOString()
+      const finConfig = resolveFinanceConfig(settings)
+      const courierFloat =
+        typeof order.courier?.customFloatCash === 'number'
+          ? order.courier.customFloatCash
+          : finConfig.defaultCourierFloatCash
+      const finSnap = computeOrderFinanceSnapshot(order, finConfig, courierFloat)
+      patchUpdates.productSubtotal = finSnap.productSubtotal
+      patchUpdates.courierCommissionAmount = finSnap.courierCommissionAmount
+      patchUpdates.kalurahanFeeAmount = finSnap.kalurahanFeeAmount
+      patchUpdates.exceededFloatCash = finSnap.exceededFloatCash
     }
     await writeClient.patch(order._id).set(patchUpdates).commit()
 

@@ -2,6 +2,12 @@
 
 import { createClient } from 'next-sanity'
 import { getPhoneLookupVariants } from '@/lib/actionToken'
+import { APP_SETTINGS_QUERY } from '@/sanity/lib/queries'
+import {
+  resolveFinanceConfig,
+  computeCourierLedgerSummary,
+  assignOrderSettlementPeriodKey,
+} from '@/lib/courierFinanceEngine'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -24,7 +30,11 @@ export async function getCourierByPhone(phone: string, pin: string) {
       pin,
       isActive,
       status,
-      statusMessage
+      statusMessage,
+      customFloatCash,
+      isSettlementBlocked,
+      settlementBlockedReason,
+      lastSettledAt
     }`
     const courier = await writeClient.fetch(query, { variants }, { cache: 'no-store' })
 
@@ -102,5 +112,75 @@ export async function getCourierOrders(courierId: string) {
   } catch (error) {
     console.error('Fetch courier orders failed:', error)
     return { success: false, error: 'Gagal memuat tugas pengantaran.' }
+  }
+}
+
+/**
+ * Mengambil ringkasan kas awal, upah, dan kewajiban setoran/refill jam 16.00 untuk kurir login
+ */
+export async function getCourierFinanceSummary(courierId: string) {
+  try {
+    const cleanId = courierId.replace(/^drafts\./, '')
+    const [rawSettings, courier, openOrders, openSettlements] = await Promise.all([
+      writeClient.fetch(APP_SETTINGS_QUERY, {}, { cache: 'no-store' }),
+      writeClient.fetch(
+        `*[_type == "courier" && _id == $cid][0]{
+          _id, customFloatCash, isSettlementBlocked, settlementBlockedReason
+        }`,
+        { cid: cleanId },
+        { cache: 'no-store' }
+      ),
+      writeClient.fetch(
+        `*[_type == "order" && !(_id in path("drafts.**")) && courier._ref == $cid && status == "completed" && orderCategory != "service" && !defined(settlementId)]{
+          _id, orderNumber, paymentMethod, totalAmount, shippingFee,
+          productSubtotal, courierCommissionAmount, kalurahanFeeAmount, exceededFloatCash,
+          completedAt, _updatedAt, _createdAt, items[]{ quantity, price }
+        }`,
+        { cid: cleanId },
+        { cache: 'no-store' }
+      ),
+      writeClient.fetch(
+        `*[_type == "courierSettlement" && !(_id in path("drafts.**")) && courier._ref == $cid && status != "settled"] | order(cutoffAt asc){
+          _id, periodKey, cutoffAt, dueAt, openingFloatCash, orderCount,
+          codOrderTotal, qrisOrderTotal, sellerCashPaid, courierCommissionTotal,
+          endingCashInHand, kurirOutOfPocket, netContinueNextDay, netFullClose, status
+        }`,
+        { cid: cleanId },
+        { cache: 'no-store' }
+      ),
+    ])
+
+    const finConfig = resolveFinanceConfig(rawSettings)
+    const openingFloatCash =
+      typeof courier?.customFloatCash === 'number'
+        ? Math.max(0, courier.customFloatCash)
+        : finConfig.defaultCourierFloatCash
+    const liveSummary = computeCourierLedgerSummary(
+      openOrders || [],
+      openingFloatCash,
+      finConfig
+    )
+    const currentPeriodKey = assignOrderSettlementPeriodKey(
+      new Date().toISOString(),
+      finConfig.dailySettlementCutoffHour
+    )
+
+    return {
+      success: true,
+      data: {
+        openingFloatCash,
+        cutoffHour: finConfig.dailySettlementCutoffHour,
+        maxDelayHours: finConfig.maxSettlementDelayHours,
+        commissionPerOrder: finConfig.courierCommissionAmount,
+        isSettlementBlocked: Boolean(courier?.isSettlementBlocked),
+        settlementBlockedReason: courier?.settlementBlockedReason || '',
+        currentPeriodKey,
+        liveSummary,
+        openSettlements: openSettlements || [],
+      },
+    }
+  } catch (error) {
+    console.error('Fetch courier finance summary failed:', error)
+    return { success: false, error: 'Gagal memuat ringkasan kas kurir.' }
   }
 }

@@ -57,6 +57,31 @@ export const courierType = defineType({
       type: 'datetime',
       readOnly: true,
     }),
+    defineField({
+      name: 'customFloatCash',
+      title: 'Kas Awal Khusus Kurir (Opsional)',
+      type: 'number',
+      description: 'Kosongkan untuk memakai nominal Kas Awal default di Pengaturan Global (Rp100.000).',
+    }),
+    defineField({
+      name: 'isSettlementBlocked',
+      title: 'Dibekukan Karena Telat Setor (>2x24 Jam)',
+      type: 'boolean',
+      initialValue: false,
+      readOnly: true,
+    }),
+    defineField({
+      name: 'settlementBlockedReason',
+      title: 'Catatan Pembekuan Setoran',
+      type: 'string',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'lastSettledAt',
+      title: 'Waktu Terakhir Setoran / Refill Kas',
+      type: 'datetime',
+      readOnly: true,
+    }),
   ],
   preview: {
     select: {

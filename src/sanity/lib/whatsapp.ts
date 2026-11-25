@@ -276,53 +276,26 @@ export function buildCourierNextStepMessage(params: {
 }): string {
   const cleanBase = params.baseUrl.replace(/\/+$/, '')
 
-  if (params.stage === 'accepted') {
-    const pickedUrl = buildOrderActionUrl(params.baseUrl, {
-      orderNumber: params.orderNumber,
-      role: 'courier',
-      status: 'shipped',
-      label: 'Barang Sudah Diambil dari Penjual',
-      courierId: params.courierId,
-    })
+  if (params.stage === 'accepted' || params.stage === 'shipped') {
     const deliverUrl = buildOrderActionUrl(params.baseUrl, {
       orderNumber: params.orderNumber,
       role: 'courier',
       status: 'delivering',
-      label: 'Mulai Jalan Antar ke Pembeli',
+      label: 'Barang Diambil dan Mulai Jalan Antar ke Pembeli',
       courierId: params.courierId,
     })
 
     return `*PAWON PONDOKREJO - LANGKAH PENGANTARAN*
 ${LINE}
-Tugas pesanan ${params.orderNumber} sudah tercatat atas nama ${params.courierName}.
+Tugas pesanan ${params.orderNumber} tercatat atas nama ${params.courierName}.
 
 Tujuan antar : ${params.customerName} (${params.deliveryAddress})
 
-Langkah berikutnya setelah sampai di penjual:
-[1] Barang Sudah Diambil dari Penjual:
-${pickedUrl}
-
-[2] Langsung Mulai Jalan Antar ke Pembeli:
+Saat barang sudah diambil dari penjual dan mulai berangkat mengantar, klik tautan berikut:
+[1] Barang Diambil & Mulai Jalan Antar ke Pembeli:
 ${deliverUrl}
 
 Portal Kurir: ${cleanBase}/kurir`
-  }
-
-  if (params.stage === 'shipped') {
-    const deliverUrl = buildOrderActionUrl(params.baseUrl, {
-      orderNumber: params.orderNumber,
-      role: 'courier',
-      status: 'delivering',
-      label: 'Mulai Jalan Antar ke Pembeli',
-      courierId: params.courierId,
-    })
-    return `*PAWON PONDOKREJO - BARANG SIAP DIANTAR*
-${LINE}
-Pesanan ${params.orderNumber} sudah siap dibawa ke alamat ${params.customerName} (${params.deliveryAddress}).
-
-Saat mulai berangkat mengantar, klik tautan berikut:
-[1] Mulai Jalan Antar ke Pembeli:
-${deliverUrl}`
   }
 
   // stage === 'delivering'
@@ -406,6 +379,88 @@ ${itemsBlock}${actionBlock}
 
 Lacak pesanan Anda di:
 ${trackUrl}`
+}
+
+export function buildSettlementNotificationMessage(params: {
+  kind:
+    | 'daily_cutoff'
+    | 'admin_daily_summary'
+    | 'warning_24h'
+    | 'blocked_48h'
+    | 'admin_blocked_48h'
+  courierName: string
+  periodKey: string
+  orderCount: number
+  codOrderTotal: number
+  qrisOrderTotal: number
+  sellerCashPaid: number
+  courierCommissionTotal: number
+  netContinueNextDay: number
+  netFullClose: number
+  maxDelayHours: number
+}): string {
+  const fmt = (n: number) => `Rp${Math.abs(Math.round(n)).toLocaleString('id-ID')}`
+  const actionLine =
+    params.netContinueNextDay >= 0
+      ? `Setor ke Admin (Lanjut Kas Besok) : ${fmt(params.netContinueNextDay)}`
+      : `Refill dari Admin (Lanjut Kas)     : ${fmt(params.netContinueNextDay)}`
+  const fullCloseLine =
+    params.netFullClose >= 0
+      ? `Setor Penuh (Tutup Kas)            : ${fmt(params.netFullClose)}`
+      : `Ganti Talangan + Upah dari Admin   : ${fmt(params.netFullClose)}`
+
+  if (params.kind === 'daily_cutoff') {
+    return `*PAWON PONDOKREJO - REKAP KAS HARIAN (16.00 WIB)*
+${LINE}
+Kurir       : ${params.courierName}
+Periode     : ${params.periodKey}
+Order Selesai: ${params.orderCount} pesanan
+${LINE}
+Bayar ke Penjual : ${fmt(params.sellerCashPaid)}
+Tagihan COD      : ${fmt(params.codOrderTotal)}
+Pesanan QRIS     : ${fmt(params.qrisOrderTotal)}
+Hak Upah Kurir   : ${fmt(params.courierCommissionTotal)}
+${LINE}
+${actionLine}
+${fullCloseLine}
+
+Mohon lakukan penyelesaian kas dengan Admin Kalurahan sebelum batas ${params.maxDelayHours} jam agar giliran pengantaran tetap aktif.`
+  }
+
+  if (params.kind === 'warning_24h') {
+    return `*PAWON PONDOKREJO - PENGINGAT SETORAN KAS*
+${LINE}
+Halo ${params.courierName}, laporan kas harian periode ${params.periodKey} belum diselesaikan dengan Admin Kalurahan (> 24 jam).
+
+${actionLine}
+
+Mohon segera selesaikan sebelum batas maksimal ${params.maxDelayHours} jam agar akun tidak dibekukan sementara dari antrean.`
+  }
+
+  if (params.kind === 'blocked_48h') {
+    return `*PAWON PONDOKREJO - GILIRAN KURIR DIBEKUKAN SEMENTARA*
+${LINE}
+Halo ${params.courierName}, laporan kas harian periode ${params.periodKey} telah melewati batas ${params.maxDelayHours} jam.
+
+Penugasan order baru untuk Anda dihentikan sementara. Silakan selesaikan rekap kas dengan Admin Kalurahan untuk mengaktifkan kembali giliran Anda.`
+  }
+
+  if (params.kind === 'admin_blocked_48h') {
+    return `*PAWON PONDOKREJO - KURIR MELEWATI BATAS ${params.maxDelayHours} JAM*
+${LINE}
+Kurir   : ${params.courierName}
+Periode : ${params.periodKey}
+${actionLine}
+
+Kurir ini otomatis dibekukan dari antrean pengantaran sampai Admin mengonfirmasi setoran/refill di menu Keuangan Kurir.`
+  }
+
+  return `*PAWON PONDOKREJO - REKAP KAS KURIR PERIODE ${params.periodKey}*
+${LINE}
+Kurir        : ${params.courierName}
+Order Selesai: ${params.orderCount}
+Hak Upah     : ${fmt(params.courierCommissionTotal)}
+${actionLine}`
 }
 
 /**

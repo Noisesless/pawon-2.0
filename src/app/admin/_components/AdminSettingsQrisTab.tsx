@@ -25,6 +25,11 @@ interface AdminSettingsQrisTabProps {
     adminPhone: string
     adminPin: string
     defaultShippingFee: number
+    courierCommissionAmount?: number
+    kalurahanFeeAmount?: number
+    defaultCourierFloatCash?: number
+    dailySettlementCutoffHour?: number
+    maxSettlementDelayHours?: number
     isMaintenance: boolean
     isQrisEnabled: boolean
     qrisMerchantName: string
@@ -229,6 +234,105 @@ export default function AdminSettingsQrisTab({
                   onChange={(e) => updateForm((prev) => ({ ...prev, adminPin: e.target.value }))}
                   className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">
+                  Upah Kurir per Pesanan (Rp)
+                </label>
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  value={form.courierCommissionAmount ?? 4000}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      courierCommissionAmount: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">
+                  Kas Kalurahan per Pesanan (Rp)
+                </label>
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  value={form.kalurahanFeeAmount ?? 2000}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      kalurahanFeeAmount: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">
+                  Kas Awal Harian Kurir (Rp)
+                </label>
+                <input
+                  required
+                  type="number"
+                  min={0}
+                  step={10000}
+                  value={form.defaultCourierFloatCash ?? 100000}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      defaultCourierFloatCash: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-[var(--vibe-text-sub)] mb-1">
+                    Jam Reset (WIB)
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={form.dailySettlementCutoffHour ?? 16}
+                    onChange={(e) =>
+                      updateForm((prev) => ({
+                        ...prev,
+                        dailySettlementCutoffHour: Number(e.target.value),
+                      }))
+                    }
+                    className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-[var(--vibe-text-sub)] mb-1">
+                    Maks. Tunda (Jam)
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={168}
+                    value={form.maxSettlementDelayHours ?? 48}
+                    onChange={(e) =>
+                      updateForm((prev) => ({
+                        ...prev,
+                        maxSettlementDelayHours: Number(e.target.value),
+                      }))
+                    }
+                    className="w-full p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                  />
+                </div>
               </div>
             </div>
 

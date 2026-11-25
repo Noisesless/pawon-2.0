@@ -6,6 +6,7 @@ import {
   buildBuyerStatusMessage,
 } from '@/sanity/lib/whatsapp'
 import { pickNextRoundRobinCourier } from '@/lib/courierAssigner'
+import { syncDailyCourierSettlements } from '@/lib/courierFinanceEngine'
 
 export interface SopConfig {
   isSopAutoEnabled: boolean
@@ -456,6 +457,7 @@ export async function runOrderSopEvaluation(options: {
       if (item.action === 'auto_complete_delivered') {
         const updates: Record<string, any> = {
           status: 'completed',
+          completedAt: evaluatedAt,
           autoResolutionReason: item.reason,
           courierOfferedAt: null,
         }
@@ -525,6 +527,11 @@ export async function runOrderSopEvaluation(options: {
       waSent++
     }
   }
+
+  // 3. Sinkronkan laporan setoran kas kurir harian (cutoff 16.00 WIB & batas 2x24 jam)
+  await syncDailyCourierSettlements({ dryRun, nowMs }).catch((err) => {
+    console.error('[PAWON Settlement Sync] Error:', err)
+  })
 
   const cancelPending = candidates.filter(
     (c) => c.action === 'auto_cancel_pending'

@@ -26,7 +26,7 @@ export async function pickNextRoundRobinCourier(
 
   const rawCouriers: any[] =
     (await client.fetch(
-      `*[_type == "courier" && !(_id in path("drafts.**"))]{ _id, name, phone, isActive, status, lastAssignedAt, _createdAt }`,
+      `*[_type == "courier" && !(_id in path("drafts.**"))]{ _id, name, phone, isActive, status, isSettlementBlocked, lastAssignedAt, _createdAt }`,
       {},
       { cache: 'no-store' }
     )) || []
@@ -37,6 +37,7 @@ export async function pickNextRoundRobinCourier(
         c &&
         c.isActive === true &&
         c.status !== 'inactive' &&
+        c.isSettlementBlocked !== true &&
         Boolean(normalizePhoneTo62(c.phone || ''))
     )
     .sort((a, b) => {

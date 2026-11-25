@@ -13,12 +13,14 @@ import {
   Image as ImageIcon,
   Rocket,
   Settings,
+  Wallet,
 } from 'lucide-react'
 import {
   fetchAdminDashboardData,
   verifyAdminPin,
 } from '@/app/actions/admin'
 import AdminOrdersTab from './_components/AdminOrdersTab'
+import AdminFinanceTab from './_components/AdminFinanceTab'
 import AdminPartnersTab from './_components/AdminPartnersTab'
 import AdminCatalogTab from './_components/AdminCatalogTab'
 import AdminContentTab from './_components/AdminContentTab'
@@ -26,6 +28,7 @@ import AdminSettingsQrisTab from './_components/AdminSettingsQrisTab'
 
 type ActiveTab =
   | 'orders'
+  | 'finance'
   | 'partners'
   | 'catalog'
   | 'content'
@@ -54,11 +57,17 @@ export default function AdminDashboardPage() {
     articles: [],
     incubatorServices: [],
     incubatorSettings: null,
+    courierSettlements: [],
     appSettings: {
       siteName: 'PAWON PONDOKREJO',
       adminPhone: '+62895325586281',
       adminPin: '12341',
-      defaultShippingFee: 5000,
+      defaultShippingFee: 6000,
+      courierCommissionAmount: 4000,
+      kalurahanFeeAmount: 2000,
+      defaultCourierFloatCash: 100000,
+      dailySettlementCutoffHour: 16,
+      maxSettlementDelayHours: 48,
       isMaintenance: false,
       isQrisEnabled: true,
       qrisMerchantName: 'PAWON PONDOKREJO',
@@ -205,6 +214,14 @@ export default function AdminDashboardPage() {
       ).length,
     },
     {
+      id: 'finance',
+      label: 'Keuangan Kurir',
+      icon: <Wallet className="w-4 h-4" />,
+      badge: (dashboardData.courierSettlements || []).filter(
+        (s: any) => s.status !== 'settled'
+      ).length,
+    },
+    {
       id: 'partners',
       label: 'Mitra & Warga',
       icon: <Users className="w-4 h-4" />,
@@ -315,6 +332,16 @@ export default function AdminDashboardPage() {
             orders={dashboardData.orders}
             couriers={dashboardData.couriers}
             sopConfig={dashboardData.appSettings}
+            onRefresh={() => loadAllData(true)}
+          />
+        )}
+
+        {activeTab === 'finance' && (
+          <AdminFinanceTab
+            orders={dashboardData.orders}
+            couriers={dashboardData.couriers}
+            settlements={dashboardData.courierSettlements || []}
+            appSettings={dashboardData.appSettings}
             onRefresh={() => loadAllData(true)}
           />
         )}

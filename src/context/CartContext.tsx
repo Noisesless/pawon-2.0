@@ -30,7 +30,7 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
-  const [configuredShippingFee, setConfiguredShippingFee] = useState(5000)
+  const [configuredShippingFee, setConfiguredShippingFee] = useState(6000)
   const shippingFee = items.length > 0 ? configuredShippingFee : 0
 
   // Load from localStorage & sync dynamic shippingFee from appSettings on mount

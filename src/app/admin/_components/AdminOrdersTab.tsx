@@ -695,7 +695,7 @@ export default function AdminOrdersTab({
       order.status === 'pending'
 
     const stage = getStageStep(order.status)
-    const shippingFee = Number(order.shippingFee ?? (order.orderCategory === 'service' ? 0 : 5000))
+    const shippingFee = Number(order.shippingFee ?? (order.orderCategory === 'service' ? 0 : 6000))
     const subtotal = Math.max(0, Number(order.totalAmount || 0) - shippingFee)
 
     // Kumpulkan unique seller contacts

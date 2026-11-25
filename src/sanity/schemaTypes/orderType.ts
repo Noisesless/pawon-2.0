@@ -184,6 +184,43 @@ export const orderType = defineType({
       of: [{ type: 'string' }],
       readOnly: true,
     }),
+    defineField({
+      name: 'productSubtotal',
+      title: 'Subtotal Barang Penjual (Snapshot)',
+      type: 'number',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'courierCommissionAmount',
+      title: 'Upah Kurir per Pesanan (Snapshot)',
+      type: 'number',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'kalurahanFeeAmount',
+      title: 'Kas Kalurahan per Pesanan (Snapshot)',
+      type: 'number',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'completedAt',
+      title: 'Waktu Pesanan Selesai',
+      type: 'datetime',
+      readOnly: true,
+    }),
+    defineField({
+      name: 'exceededFloatCash',
+      title: 'Menggunakan Dana Talangan Kurir',
+      type: 'boolean',
+      initialValue: false,
+      readOnly: true,
+    }),
+    defineField({
+      name: 'settlementId',
+      title: 'ID Buku Setoran Harian Kurir',
+      type: 'string',
+      readOnly: true,
+    }),
   ],
   preview: {
     select: {

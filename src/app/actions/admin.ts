@@ -4,6 +4,14 @@ import { createClient } from 'next-sanity'
 import { updateOrderStatus } from './order'
 import { DEFAULT_PAWON_STATIC_QRIS, parseQRIS, validateCRC16 } from '@/lib/qrisEngine'
 import { runOrderSopEvaluation } from '@/lib/orderSopEngine'
+import {
+  resolveFinanceConfig,
+  computeCourierLedgerSummary,
+  assignOrderSettlementPeriodKey,
+  wibDateHourToIso,
+  syncDailyCourierSettlements,
+} from '@/lib/courierFinanceEngine'
+import { sendWhatsAppNotification } from '@/sanity/lib/whatsapp'
 
 const writeClient = createClient({
   projectId: process.env.NEXT_PUBLIC_SANITY_PROJECT_ID,
@@ -80,6 +88,12 @@ export async function fetchAllOrders() {
       status,
       courierNotes,
       autoResolutionReason,
+      completedAt,
+      productSubtotal,
+      courierCommissionAmount,
+      kalurahanFeeAmount,
+      exceededFloatCash,
+      settlementId,
       serviceDate,
       serviceItem->{
         _id,
@@ -149,6 +163,7 @@ export async function fetchAdminDashboardData() {
       incubatorServices,
       incubatorSettings,
       rawAppSettings,
+      courierSettlements,
     ] = await Promise.all([
       fetchAllOrders(),
       writeClient.fetch(
@@ -178,7 +193,11 @@ export async function fetchAdminDashboardData() {
           pin,
           isActive,
           status,
-          statusMessage
+          statusMessage,
+          customFloatCash,
+          isSettlementBlocked,
+          settlementBlockedReason,
+          lastSettledAt
         }`,
         {},
         { cache: 'no-store' }
@@ -307,6 +326,11 @@ export async function fetchAdminDashboardData() {
           adminPhone,
           adminPin,
           defaultShippingFee,
+          courierCommissionAmount,
+          kalurahanFeeAmount,
+          defaultCourierFloatCash,
+          dailySettlementCutoffHour,
+          maxSettlementDelayHours,
           isMaintenance,
           isQrisEnabled,
           qrisMerchantName,
@@ -323,6 +347,36 @@ export async function fetchAdminDashboardData() {
         {},
         { cache: 'no-store' }
       ),
+      writeClient.fetch(
+        `*[_type == "courierSettlement" && !(_id in path("drafts.**"))] | order(cutoffAt desc)[0..100] {
+          _id,
+          periodKey,
+          "courierId": courier._ref,
+          courierName,
+          courierPhone,
+          cutoffAt,
+          dueAt,
+          openingFloatCash,
+          orderCount,
+          orderNumbers,
+          codOrderTotal,
+          qrisOrderTotal,
+          sellerCashPaid,
+          courierCommissionTotal,
+          kalurahanFeeTotal,
+          endingCashInHand,
+          kurirOutOfPocket,
+          netContinueNextDay,
+          netFullClose,
+          settlementMode,
+          status,
+          settledAt,
+          settledAmount,
+          notes
+        }`,
+        {},
+        { cache: 'no-store' }
+      ),
     ])
 
     const appSettings = {
@@ -330,7 +384,12 @@ export async function fetchAdminDashboardData() {
       siteName: rawAppSettings?.siteName || 'PAWON PONDOKREJO',
       adminPhone: rawAppSettings?.adminPhone || '+62895325586281',
       adminPin: rawAppSettings?.adminPin || '12341',
-      defaultShippingFee: rawAppSettings?.defaultShippingFee ?? 5000,
+      defaultShippingFee: rawAppSettings?.defaultShippingFee ?? 6000,
+      courierCommissionAmount: rawAppSettings?.courierCommissionAmount ?? 4000,
+      kalurahanFeeAmount: rawAppSettings?.kalurahanFeeAmount ?? 2000,
+      defaultCourierFloatCash: rawAppSettings?.defaultCourierFloatCash ?? 100000,
+      dailySettlementCutoffHour: rawAppSettings?.dailySettlementCutoffHour ?? 16,
+      maxSettlementDelayHours: rawAppSettings?.maxSettlementDelayHours ?? 48,
       isMaintenance: Boolean(rawAppSettings?.isMaintenance),
       isQrisEnabled: rawAppSettings?.isQrisEnabled !== false,
       qrisMerchantName: rawAppSettings?.qrisMerchantName || 'PAWON PONDOKREJO',
@@ -362,6 +421,7 @@ export async function fetchAdminDashboardData() {
         articles: articles || [],
         incubatorServices: incubatorServices || [],
         incubatorSettings: incubatorSettings || null,
+        courierSettlements: courierSettlements || [],
         appSettings,
       },
     }
@@ -428,6 +488,11 @@ export async function saveAppSettings(data: {
   adminPhone: string
   adminPin: string
   defaultShippingFee: number
+  courierCommissionAmount?: number
+  kalurahanFeeAmount?: number
+  defaultCourierFloatCash?: number
+  dailySettlementCutoffHour?: number
+  maxSettlementDelayHours?: number
   isMaintenance: boolean
   isQrisEnabled: boolean
   qrisMerchantName: string
@@ -477,13 +542,39 @@ export async function saveAppSettings(data: {
       ? (hasPlus ? `+${normalizedPhone}` : normalizedPhone)
       : '+62895325586281'
 
+    const shippingFeeVal = Math.max(0, Number(data.defaultShippingFee) ?? 6000)
+    const commissionVal = Math.max(
+      0,
+      Number(data.courierCommissionAmount ?? 4000)
+    )
+    const kalurahanVal = Math.max(
+      0,
+      Number(
+        data.kalurahanFeeAmount ?? Math.max(0, shippingFeeVal - commissionVal)
+      )
+    )
+
     const docToSave: { _id: string; _type: string; [key: string]: any } = {
       _id: primaryId,
       _type: 'appSettings',
       siteName: data.siteName.trim() || 'PAWON PONDOKREJO',
       adminPhone: finalAdminPhone,
       adminPin: data.adminPin.trim() || '12341',
-      defaultShippingFee: Math.max(0, Number(data.defaultShippingFee) || 0),
+      defaultShippingFee: shippingFeeVal,
+      courierCommissionAmount: commissionVal,
+      kalurahanFeeAmount: kalurahanVal,
+      defaultCourierFloatCash: Math.max(
+        0,
+        Number(data.defaultCourierFloatCash ?? 100000)
+      ),
+      dailySettlementCutoffHour: Math.min(
+        23,
+        Math.max(0, Number(data.dailySettlementCutoffHour ?? 16))
+      ),
+      maxSettlementDelayHours: Math.max(
+        1,
+        Number(data.maxSettlementDelayHours ?? 48)
+      ),
       isMaintenance: Boolean(data.isMaintenance),
       isQrisEnabled: Boolean(data.isQrisEnabled),
       qrisMerchantName:
@@ -647,6 +738,198 @@ export async function adminQuickOrderTransition(
   note: string
 ) {
   return await updateOrderStatus(orderNumber, newStatus, note)
+}
+
+/**
+ * Menjalankan sinkronisasi tutup buku harian jam 16.00 WIB dan batas 2x24 jam secara manual dari Admin
+ */
+export async function syncCourierSettlementsAction() {
+  try {
+    const res = await syncDailyCourierSettlements({ dryRun: false })
+    return { success: true, data: res }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Gagal menyinkronkan laporan kas kurir.',
+    }
+  }
+}
+
+/**
+ * Mengonfirmasi penyelesaian setoran/refill kas kurir oleh Admin Kalurahan dan membuka blokir antrean jika ada
+ */
+export async function confirmCourierSettlementAction(params: {
+  settlementId?: string
+  courierId: string
+  periodKey?: string
+  mode: 'continue_float' | 'full_return'
+  notes?: string
+}) {
+  try {
+    const cleanCourierId = canonicalId(params.courierId)
+    const nowIso = new Date().toISOString()
+
+    const [rawSettings, courier] = await Promise.all([
+      writeClient.fetch(
+        `*[_type == "appSettings"] | order(_updatedAt desc)[0]`,
+        {},
+        { cache: 'no-store' }
+      ),
+      writeClient.fetch(
+        `*[_type == "courier" && _id == $id][0]{ _id, name, phone, customFloatCash }`,
+        { id: cleanCourierId },
+        { cache: 'no-store' }
+      ),
+    ])
+
+    if (!courier) {
+      return { success: false, error: 'Data kurir tidak ditemukan.' }
+    }
+
+    const finConfig = resolveFinanceConfig(rawSettings)
+    const openingFloat =
+      typeof courier.customFloatCash === 'number'
+        ? Math.max(0, courier.customFloatCash)
+        : finConfig.defaultCourierFloatCash
+
+    let settledAmount = 0
+    let usedPeriodKey = params.periodKey || assignOrderSettlementPeriodKey(nowIso, finConfig.dailySettlementCutoffHour)
+
+    if (params.settlementId) {
+      const existing = await writeClient.fetch(
+        `*[_type == "courierSettlement" && _id == $sid][0]`,
+        { sid: params.settlementId },
+        { cache: 'no-store' }
+      )
+      if (!existing) {
+        return { success: false, error: 'Laporan kas periode tersebut tidak ditemukan.' }
+      }
+      if (existing.status === 'settled') {
+        return { success: false, error: 'Laporan kas ini sudah diselesaikan sebelumnya.' }
+      }
+      usedPeriodKey = existing.periodKey || usedPeriodKey
+      settledAmount =
+        params.mode === 'continue_float'
+          ? Number(existing.netContinueNextDay || 0)
+          : Number(existing.netFullClose || 0)
+
+      await writeClient
+        .patch(existing._id)
+        .set({
+          status: 'settled',
+          settlementMode: params.mode,
+          settledAt: nowIso,
+          settledAmount,
+          notes: params.notes?.trim() || '',
+        })
+        .commit()
+    } else {
+      // Penyelesaian langsung untuk transaksi hari berjalan sebelum tutup buku 16.00 WIB
+      const openOrders = await writeClient.fetch(
+        `*[_type == "order" && !(_id in path("drafts.**")) && courier._ref == $cid && status == "completed" && orderCategory != "service" && !defined(settlementId)]{
+          _id, orderNumber, paymentMethod, totalAmount, shippingFee,
+          productSubtotal, courierCommissionAmount, kalurahanFeeAmount, exceededFloatCash,
+          completedAt, _updatedAt, _createdAt, items[]{ quantity, price }
+        }`,
+        { cid: cleanCourierId },
+        { cache: 'no-store' }
+      )
+
+      const matchedOrders = (openOrders || []).filter((ord: any) => {
+        if (!params.periodKey) return true
+        const pKey = assignOrderSettlementPeriodKey(
+          ord.completedAt || ord._updatedAt || ord._createdAt,
+          finConfig.dailySettlementCutoffHour
+        )
+        return pKey === params.periodKey
+      })
+
+      const summary = computeCourierLedgerSummary(matchedOrders, openingFloat, finConfig)
+      settledAmount =
+        params.mode === 'continue_float'
+          ? summary.netContinueNextDay
+          : summary.netFullClose
+
+      const docId = `settlement-${cleanCourierId}-${usedPeriodKey}`
+      const cutoffAt = wibDateHourToIso(usedPeriodKey, finConfig.dailySettlementCutoffHour)
+      const dueAt = new Date(
+        new Date(cutoffAt).getTime() + finConfig.maxSettlementDelayHours * 3600000
+      ).toISOString()
+
+      await writeClient.createOrReplace({
+        _id: docId,
+        _type: 'courierSettlement',
+        periodKey: usedPeriodKey,
+        courier: { _type: 'reference', _ref: cleanCourierId },
+        courierName: courier.name || 'Kurir PAWON',
+        courierPhone: courier.phone || '',
+        cutoffAt,
+        dueAt,
+        openingFloatCash: summary.openingFloatCash,
+        orderCount: summary.orderCount,
+        orderNumbers: summary.orderNumbers,
+        codOrderTotal: summary.codOrderTotal,
+        qrisOrderTotal: summary.qrisOrderTotal,
+        sellerCashPaid: summary.sellerCashPaid,
+        courierCommissionTotal: summary.courierCommissionTotal,
+        kalurahanFeeTotal: summary.kalurahanFeeTotal,
+        endingCashInHand: summary.endingCashInHand,
+        kurirOutOfPocket: summary.kurirOutOfPocket,
+        netContinueNextDay: summary.netContinueNextDay,
+        netFullClose: summary.netFullClose,
+        settlementMode: params.mode,
+        status: 'settled',
+        settledAt: nowIso,
+        settledAmount,
+        notes: params.notes?.trim() || '',
+      })
+
+      for (const ord of matchedOrders) {
+        await writeClient
+          .patch(canonicalId(ord._id))
+          .set({ settlementId: docId })
+          .commit()
+          .catch(() => {})
+      }
+    }
+
+    // Periksa apakah masih ada tunggakan blocked_overdue lain sebelum membuka blokir kurir
+    const remainingOverdue = await writeClient.fetch(
+      `count(*[_type == "courierSettlement" && !(_id in path("drafts.**")) && courier._ref == $cid && status == "blocked_overdue"])`,
+      { cid: cleanCourierId },
+      { cache: 'no-store' }
+    )
+
+    const courierPatch: Record<string, any> = { lastSettledAt: nowIso }
+    if ((remainingOverdue || 0) === 0) {
+      courierPatch.isSettlementBlocked = false
+      courierPatch.settlementBlockedReason = ''
+    }
+    await writeClient.patch(cleanCourierId).set(courierPatch).commit()
+
+    if (courier.phone) {
+      const modeText =
+        params.mode === 'continue_float'
+          ? `Lanjut Kas Awal Rp${openingFloat.toLocaleString('id-ID')}`
+          : 'Tutup Kas Penuh'
+      const flowText =
+        settledAmount >= 0
+          ? `Setoran diterima Admin: Rp${Math.round(settledAmount).toLocaleString('id-ID')}`
+          : `Refill / ganti talangan ke Kurir: Rp${Math.abs(Math.round(settledAmount)).toLocaleString('id-ID')}`
+      await sendWhatsAppNotification(
+        courier.phone,
+        `*PAWON PONDOKREJO - KONFIRMASI REKAP KAS SELESAI*\n--------------------------------\nKurir   : ${courier.name}\nPeriode : ${usedPeriodKey}\nStatus  : Lunas (${modeText})\n${flowText}\n\nTerima kasih, giliran pengantaran Anda aktif kembali.`
+      ).catch(() => {})
+    }
+
+    return { success: true, settledAmount }
+  } catch (error: any) {
+    console.error('confirmCourierSettlementAction error:', error)
+    return {
+      success: false,
+      error: error?.message || 'Gagal mengonfirmasi setoran kas kurir.',
+    }
+  }
 }
 
 /**
