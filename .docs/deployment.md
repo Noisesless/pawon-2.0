@@ -64,7 +64,7 @@ Aplikasi dilengkapi proteksi otomatis berbasis `NODE_ENV` pada `src/instrumentat
    ```
 2. **Instal Dependensi & Build**:
    ```bash
-   npm ci
+   npm install --ignore-scripts
    npm run build
    ```
 3. **Restart Service via PM2 / CloudPanel Node Manager**:
@@ -78,10 +78,10 @@ Aplikasi dilengkapi proteksi otomatis berbasis `NODE_ENV` pada `src/instrumentat
 
 ## 6. Verifikasi Pasca-Deployment (Post-Deploy Verification)
 
-1. **Smoke Test Beranda**: Akses `https://pawon.pondokrejo.id` dari browser desktop & smartphone (pastikan rewrite `/mobile/*` aktif).
+1. **Smoke Test Beranda & Aset Peta**: Akses `https://pawon.pondokrejo.id`, `/geo/pondokrejo-boundary.geojson`, dan `/geo/pondokrejo-toponimi.geojson` (HTTP 200 OK).
 2. **Endpoint Version Diagnostic**: Akses `https://pawon.pondokrejo.id/api/version` (HTTP 200 OK).
 3. **Smoke Test SOP Endpoint**: Panggil `GET /api/cron/order-sop?dryRun=true` dengan header `Authorization: Bearer <CRON_SECRET>` dan pastikan merespons `ok: true`.
-4. **Pusat Kendali Admin**: Login ke `https://pawon.pondokrejo.id/admin` untuk mengecek dashboard pesanan 6-tab & pengaturan QRIS.
+4. **Pusat Kendali Admin**: Login ke `https://pawon.pondokrejo.id/admin` untuk mengecek dashboard 8-tab (Pesanan, Keuangan Kurir, Mitra & Warga, Peta UMKM, Katalog, Konten, Inkubator, Pengaturan & QRIS).
 
 ---
 

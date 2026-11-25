@@ -88,6 +88,16 @@ Dokumen ini mencatat daftar isu teknis aktif (OPEN) serta riwayat masalah yang t
 - **Komponen**: `src/lib/courierAssigner.ts`, `src/sanity/lib/queries.ts`, `src/app/track/[orderNumber]/page.tsx`, `src/app/mobile/track/[orderNumber]/page.tsx`, `src/app/lapak/_components/VendorDashboard.tsx`, `src/app/actions/order.ts`
 - **Solusi**: Menambahkan `isCourierConfirmedForOrder()` agar nama dan WA kurir hanya muncul di halaman lacak, portal penjual, dan WA pembeli setelah kurir benar-benar mengklik `Terima Order` (`courierOfferedAt == null`).
 
+### [ISS-014] Tab Navigasi `/admin` Terpotong Navbar Utama Saat Scroll
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `src/components/Navbar.tsx`, `src/app/admin/page.tsx`
+- **Solusi**: Menyembunyikan Navbar etalase publik pada rute `/admin` dan `/studio` sehingga header **Admin PAWON** + 8 tab menempel utuh di `top-0`, serta menambah tombol **`Lihat Toko`** pada header `/admin`.
+
+### [ISS-015] Peta Wilayah Pondokrejo & Sebaran Lokasi UMKM (`Leaflet + GeoJSON`)
+- **Status**: RESOLVED (2026-11-25)
+- **Komponen**: `public/geo/pondokrejo-boundary.geojson`, `public/geo/pondokrejo-toponimi.geojson`, `src/app/admin/_components/AdminMapTab.tsx`, `src/app/admin/_components/AdminPartnersTab.tsx`, `src/app/lapak/_components/VendorDashboard.tsx`, `src/sanity/schemaTypes/vendorType.ts`, `src/app/actions/admin.ts`
+- **Solusi**: Menambah tab **Peta UMKM** berbasis `leaflet@1.9.4` + batas resmi & label padukuhan Pondokrejo (GeoJSON), toggle jalan/satelit, filter status UMKM, penandaan pin langsung di peta, dan tombol GPS lokasi lapak.
+
 ---
 
 ## 🔵 RESOLVED ISSUES (Terselesaikan)

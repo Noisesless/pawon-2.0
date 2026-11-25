@@ -63,7 +63,8 @@ PAWON mengusung nuansa **Agri-Commerce & Village Warmth** dengan perpaduan hijau
 - **`DynamicQrisCard` (`src/components/DynamicQrisCard.tsx`)**:
   - Kartu pembayaran QRIS EMVCo dengan badge NMID, tampilan nominal terkunci bold, QR code berbasis SVG/Canvas (`qrcode.react`), serta tombol unduh kartu QRIS berformat PNG siap cetak/scan dari galeri e-wallet.
 - **Pusat Kendali Admin (`/admin`)**:
-  - Tata letak 7-tab (termasuk tab **Keuangan Kurir** `AdminFinanceTab`) dengan kartu KPI filterable, grup transaksi berbasis periode (`Bulan > Minggu > Hari`) yang otomatis terlipat (*auto-collapse*), saklar tampilan **Tabel vs Kartu**, stepper 5-tahap horizontal, tombol setoran/refill warna semantik status, serta kartu **Kas Awal & Upah** di Portal Kurir (`/kurir`) berbasis token `var(--vibe-*)` tanpa resting shadows.
+  - Tata letak 8-tab (termasuk tab **Keuangan Kurir** `AdminFinanceTab` dengan alur nota bendahara & **Peta UMKM** `AdminMapTab` berbasis `Leaflet` + GeoJSON batas Pondokrejo serta pin `divIcon` semantik warna buka/tutup/terpilih).
+  - Kartu KPI filterable, grup transaksi berbasis periode (`Bulan > Minggu > Hari`) yang otomatis terlipat (*auto-collapse*), saklar tampilan **Tabel vs Kartu**, stepper 5-tahap horizontal, serta kartu **Kas Awal & Upah** di Portal Kurir (`/kurir`) berbasis token `var(--vibe-*)` tanpa resting shadows.
 
 ---
 
