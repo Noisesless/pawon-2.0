@@ -121,31 +121,48 @@ export default function CourierDashboard({ initialData, onLogout }: Props) {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2.5 text-center bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+            <div className="grid grid-cols-2 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 text-xs">
               <div>
-                <p className="text-[10px] font-bold text-slate-400">Selesai</p>
-                <p className="text-sm font-black text-slate-900">
-                  {finance.liveSummary.orderCount} Order
+                <p className="text-[10px] font-bold text-slate-400">Bayar Penjual ({finance.liveSummary.orderCount} Order)</p>
+                <p className="text-sm font-black text-rose-600">
+                  -Rp{Number(finance.liveSummary.sellerCashPaid || 0).toLocaleString('id-ID')}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400">Upah Anda</p>
+                <p className="text-[10px] font-bold text-slate-400">Tunai COD Masuk</p>
+                <p className="text-sm font-black text-slate-900">
+                  +Rp{Number(finance.liveSummary.codOrderTotal || 0).toLocaleString('id-ID')}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400">Hak Upah Anda</p>
                 <p className="text-sm font-black text-emerald-700">
                   Rp{Number(finance.liveSummary.courierCommissionTotal || 0).toLocaleString('id-ID')}
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold text-slate-400">
-                  {finance.liveSummary.netContinueNextDay >= 0 ? 'Setor Admin' : 'Refill Admin'}
+                <p className="text-[10px] font-bold text-slate-400">Bagian Kas Desa</p>
+                <p className="text-sm font-black text-blue-700">
+                  Rp{Number(finance.liveSummary.kalurahanFeeTotal || 0).toLocaleString('id-ID')}
                 </p>
-                <p
-                  className={`text-sm font-black ${
-                    finance.liveSummary.netContinueNextDay >= 0
-                      ? 'text-slate-900'
-                      : 'text-rose-600'
-                  }`}
-                >
-                  Rp{Math.abs(Math.round(finance.liveSummary.netContinueNextDay || 0)).toLocaleString('id-ID')}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+                <p className="text-[10px] font-bold text-emerald-700">Lanjut Kas Besok (Modal Tetap)</p>
+                <p className="font-black text-emerald-900 mt-0.5">
+                  {finance.liveSummary.netContinueNextDay >= 0
+                    ? `Setor Selisih Rp${Math.round(finance.liveSummary.netContinueNextDay).toLocaleString('id-ID')}`
+                    : `Terima Refill Rp${Math.abs(Math.round(finance.liveSummary.netContinueNextDay)).toLocaleString('id-ID')}`}
+                </p>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-500">Reset / Tutup Kas Hari Ini</p>
+                <p className="font-black text-slate-900 mt-0.5">
+                  {finance.liveSummary.netFullClose >= 0
+                    ? `Setor Penuh Rp${Math.round(finance.liveSummary.netFullClose).toLocaleString('id-ID')}`
+                    : `Terima Ganti Rp${Math.abs(Math.round(finance.liveSummary.netFullClose)).toLocaleString('id-ID')}`}
                 </p>
               </div>
             </div>

@@ -38,6 +38,157 @@ function formatRp(n: number): string {
   return `Rp${Math.round(Math.abs(n)).toLocaleString('id-ID')}`
 }
 
+interface LedgerCalculationBoxProps {
+  openingFloatCash: number
+  sellerCashPaid: number
+  codOrderTotal: number
+  qrisOrderTotal: number
+  endingCashInHand: number
+  courierCommissionTotal: number
+  kalurahanFeeTotal: number
+  kurirOutOfPocket: number
+  netContinueNextDay: number
+  netFullClose: number
+  courierName: string
+  busyKey: string | null
+  onConfirm: (mode: 'continue_float' | 'full_return', amount: number) => void
+}
+
+function LedgerCalculationBox({
+  openingFloatCash,
+  sellerCashPaid,
+  codOrderTotal,
+  qrisOrderTotal,
+  endingCashInHand,
+  courierCommissionTotal,
+  kalurahanFeeTotal,
+  kurirOutOfPocket,
+  netContinueNextDay,
+  netFullClose,
+  busyKey,
+  onConfirm,
+}: LedgerCalculationBoxProps) {
+  return (
+    <div className="space-y-3">
+      {/* Langkah 1: Alur Uang Fisik Kurir */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 bg-white p-3.5 rounded-xl border border-[var(--vibe-border)] text-xs">
+        <div>
+          <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">Modal Awal</p>
+          <p className="font-black text-[var(--vibe-text-main)]">{formatRp(openingFloatCash)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">Bayar ke Penjual</p>
+          <p className="font-black text-rose-600">-{formatRp(sellerCashPaid)}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">Tunai COD Masuk</p>
+          <p className="font-black text-green-700">+{formatRp(codOrderTotal)}</p>
+          {qrisOrderTotal > 0 && (
+            <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
+              QRIS via PAWON: {formatRp(qrisOrderTotal)}
+            </p>
+          )}
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
+            Tunai di Tangan Kurir
+          </p>
+          <p className="font-black text-[var(--vibe-text-main)]">
+            {endingCashInHand < 0 ? `-${formatRp(endingCashInHand)}` : formatRp(endingCashInHand)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
+            Upah Kurir / Bagian Desa
+          </p>
+          <p className="font-black text-[var(--vibe-accent-1)]">
+            -{formatRp(courierCommissionTotal)} /{' '}
+            <span className="text-blue-700">{formatRp(kalurahanFeeTotal)}</span>
+          </p>
+        </div>
+      </div>
+
+      {kurirOutOfPocket > 0 || sellerCashPaid > openingFloatCash ? (
+        <div className="px-3.5 py-2 rounded-xl bg-amber-100 text-amber-900 text-xs font-bold">
+          {kurirOutOfPocket > 0
+            ? `Dana Talangan Pribadi Kurir Tertanam: ${formatRp(kurirOutOfPocket)} (sudah dihitung dalam nominal ganti/refill di bawah).`
+            : `Order memakai dana talangan saat ambil barang melebihi modal awal (${formatRp(openingFloatCash)}), dan sudah tertutup dari tunai COD.`}
+        </div>
+      ) : sellerCashPaid === openingFloatCash && sellerCashPaid > 0 ? (
+        <div className="px-3.5 py-2 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">
+          Modal awal {formatRp(openingFloatCash)} terpakai penuh ke penjual sebelum COD diterima.
+        </div>
+      ) : null}
+
+      {/* Langkah 2: Dua Pilihan Penyelesaian Eksplisit untuk Bendahara */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="p-3.5 rounded-xl bg-white border border-[var(--vibe-border)] flex flex-col justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-[var(--vibe-text-sub)]">
+              Opsi 1: Modal {formatRp(openingFloatCash)} Tetap Dibawa Besok
+            </p>
+            <p
+              className={`text-sm font-black mt-1 ${
+                netContinueNextDay >= 0 ? 'text-green-700' : 'text-red-700'
+              }`}
+            >
+              {netContinueNextDay >= 0
+                ? `Kurir Setor Selisih: ${formatRp(netContinueNextDay)}`
+                : `Admin Refill ke Kurir: ${formatRp(netContinueNextDay)}`}
+            </p>
+            <p className="text-[11px] font-medium text-[var(--vibe-text-sub)] mt-0.5">
+              {netContinueNextDay >= 0
+                ? `Kurir potong upah ${formatRp(courierCommissionTotal)}, pegang modal ${formatRp(openingFloatCash)} untuk besok.`
+                : `Ganti modal + talangan + upah agar besok pegang tepat ${formatRp(openingFloatCash)}.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={busyKey !== null}
+            onClick={() => onConfirm('continue_float', netContinueNextDay)}
+            className="w-full py-2.5 px-3 rounded-xl bg-[var(--vibe-accent-1)] text-white text-xs font-black inline-flex items-center justify-center gap-1.5 hover:opacity-95 disabled:opacity-50"
+          >
+            <CheckCircle className="w-4 h-4" />
+            <span>
+              {netContinueNextDay >= 0
+                ? `Terima ${formatRp(netContinueNextDay)} & Lanjut Kas`
+                : `Bayar Refill ${formatRp(netContinueNextDay)} & Lanjut Kas`}
+            </span>
+          </button>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-white border border-[var(--vibe-border)] flex flex-col justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-[var(--vibe-text-sub)]">
+              Opsi 2: Kembalikan Semua / Reset Kas Hari Ini
+            </p>
+            <p className="text-sm font-black mt-1 text-[var(--vibe-text-main)]">
+              {netFullClose >= 0
+                ? `Kurir Setor Penuh: ${formatRp(netFullClose)}`
+                : `Admin Ganti Talangan: ${formatRp(netFullClose)}`}
+            </p>
+            <p className="text-[11px] font-medium text-[var(--vibe-text-sub)] mt-0.5">
+              {netFullClose >= 0
+                ? `Modal ${formatRp(openingFloatCash)} kembali ke Admin + bagian desa ${formatRp(kalurahanFeeTotal)}.`
+                : `Admin mengganti sisa dana pribadi kurir + upah kurir.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={busyKey !== null}
+            onClick={() => onConfirm('full_return', netFullClose)}
+            className="w-full py-2.5 px-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-[var(--vibe-text-main)] text-xs font-black hover:bg-slate-200/70 disabled:opacity-50"
+          >
+            {netFullClose >= 0
+              ? `Terima Penuh ${formatRp(netFullClose)} & Reset`
+              : `Ganti ${formatRp(netFullClose)} & Reset`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminFinanceTab({
   orders,
   couriers,
@@ -49,6 +200,7 @@ export default function AdminFinanceTab({
   const [busyKey, setBusyKey] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [showSettledHistory, setShowSettledHistory] = useState(false)
+  const [showIdleCouriers, setShowIdleCouriers] = useState(false)
 
   const finConfig = useMemo(() => resolveFinanceConfig(appSettings), [appSettings])
 
@@ -407,118 +559,32 @@ export default function AdminFinanceTab({
                           : '-'}
                       </p>
                     </div>
-
-                    <div className="text-right">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-[var(--vibe-text-sub)]">
-                        {netNext >= 0 ? 'Kurir Setor (Lanjut Kas)' : 'Admin Refill ke Kurir'}
-                      </p>
-                      <p
-                        className={`text-xl font-black inline-flex items-center gap-1 ${
-                          netNext >= 0 ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
-                        {netNext >= 0 ? (
-                          <ArrowDownRight className="w-4 h-4" />
-                        ) : (
-                          <ArrowUpRight className="w-4 h-4" />
-                        )}
-                        <span>{formatRp(netNext)}</span>
-                      </p>
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white p-3.5 rounded-xl border border-[var(--vibe-border)] text-xs">
-                    <div>
-                      <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">Kas Awal</p>
-                      <p className="font-black text-[var(--vibe-text-main)]">
-                        {formatRp(st.openingFloatCash || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
-                        Bayar Penjual
-                      </p>
-                      <p className="font-black text-rose-600">
-                        -{formatRp(st.sellerCashPaid || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
-                        Masuk COD / QRIS
-                      </p>
-                      <p className="font-black text-[var(--vibe-text-main)]">
-                        +{formatRp(st.codOrderTotal || 0)} / {formatRp(st.qrisOrderTotal || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
-                        Upah Kurir
-                      </p>
-                      <p className="font-black text-[var(--vibe-accent-1)]">
-                        {formatRp(st.courierCommissionTotal || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-[var(--vibe-text-sub)]">
-                        Kas Kalurahan
-                      </p>
-                      <p className="font-black text-blue-700">
-                        {formatRp(st.kalurahanFeeTotal || 0)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {Number(st.kurirOutOfPocket || 0) > 0 && (
-                    <div className="px-3.5 py-2 rounded-xl bg-amber-100 text-amber-900 text-xs font-bold">
-                      Dana Talangan Pribadi Kurir Tercatat: {formatRp(st.kurirOutOfPocket)} (otomatis
-                      diperhitungkan pada nominal refill di atas).
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={busyKey !== null}
-                      onClick={() =>
-                        handleConfirmSettlement({
-                          settlementId: st._id,
-                          courierId: st.courierId,
-                          courierName: st.courierName,
-                          periodKey: st.periodKey,
-                          mode: 'full_return',
-                          amount: netClose,
-                        })
-                      }
-                      className="px-4 py-2.5 rounded-xl bg-white border border-[var(--vibe-border)] text-[var(--vibe-text-main)] text-xs font-black hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {netClose >= 0
-                        ? `Tutup Kas Penuh (Setor ${formatRp(netClose)})`
-                        : `Tutup Kas (Ganti Talangan ${formatRp(netClose)})`}
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={busyKey !== null}
-                      onClick={() =>
-                        handleConfirmSettlement({
-                          settlementId: st._id,
-                          courierId: st.courierId,
-                          courierName: st.courierName,
-                          periodKey: st.periodKey,
-                          mode: 'continue_float',
-                          amount: netNext,
-                        })
-                      }
-                      className="px-4 py-2.5 rounded-xl bg-[var(--vibe-accent-1)] text-white text-xs font-black inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>
-                        {netNext >= 0
-                          ? `Konfirmasi Setor ${formatRp(netNext)} & Lanjut Kas`
-                          : `Konfirmasi Refill ${formatRp(netNext)} & Lanjut Kas`}
-                      </span>
-                    </button>
-                  </div>
+                  <LedgerCalculationBox
+                    openingFloatCash={Number(st.openingFloatCash || 0)}
+                    sellerCashPaid={Number(st.sellerCashPaid || 0)}
+                    codOrderTotal={Number(st.codOrderTotal || 0)}
+                    qrisOrderTotal={Number(st.qrisOrderTotal || 0)}
+                    endingCashInHand={Number(st.endingCashInHand || 0)}
+                    courierCommissionTotal={Number(st.courierCommissionTotal || 0)}
+                    kalurahanFeeTotal={Number(st.kalurahanFeeTotal || 0)}
+                    kurirOutOfPocket={Number(st.kurirOutOfPocket || 0)}
+                    netContinueNextDay={netNext}
+                    netFullClose={netClose}
+                    courierName={st.courierName}
+                    busyKey={busyKey}
+                    onConfirm={(mode, amount) =>
+                      handleConfirmSettlement({
+                        settlementId: st._id,
+                        courierId: st.courierId,
+                        courierName: st.courierName,
+                        periodKey: st.periodKey,
+                        mode,
+                        amount,
+                      })
+                    }
+                  />
                 </div>
               )
             })}
@@ -527,147 +593,121 @@ export default function AdminFinanceTab({
       </div>
 
       {/* SECTION 2: Pantauan Kas Berjalan Hari Ini (Sebelum Jam 16.00) */}
-      <div className="bg-[var(--vibe-surface)] p-6 rounded-2xl border border-[var(--vibe-border)] space-y-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-[var(--vibe-accent-1-lt)] text-[var(--vibe-accent-1)]">
-            <Wallet className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-black text-[var(--vibe-text-main)]">
-              Pantauan Kas Berjalan Per Kurir
-            </h3>
-            <p className="text-xs font-bold text-[var(--vibe-text-sub)]">
-              Posisi transaksi selesai yang belum tutup buku, otomatis ditagihkan pukul{' '}
-              {String(finConfig.dailySettlementCutoffHour).padStart(2, '0')}:00 WIB
-            </p>
-          </div>
-        </div>
+      {(() => {
+        const activeRows = liveCourierLedgers.filter(
+          (r) =>
+            r.summary.orderCount > 0 ||
+            r.inFlightCount > 0 ||
+            r.courier.isSettlementBlocked
+        )
+        const idleRowsCount = liveCourierLedgers.length - activeRows.length
+        const displayedRows = showIdleCouriers ? liveCourierLedgers : activeRows
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {liveCourierLedgers.map((row) => {
-            const { courier, summary, inFlightCount } = row
-            const hasActivity = summary.orderCount > 0 || inFlightCount > 0 || courier.isSettlementBlocked
-            return (
-              <div
-                key={row.courierId}
-                className={`p-5 rounded-2xl border space-y-3 ${
-                  courier.isSettlementBlocked
-                    ? 'bg-red-50/50 border-red-200'
-                    : 'bg-[var(--vibe-surface-sub)] border-[var(--vibe-border)]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Truck className="w-4 h-4 text-[var(--vibe-text-sub)]" />
-                      <h4 className="font-black text-[var(--vibe-text-main)]">{courier.name}</h4>
-                      {courier.isSettlementBlocked && (
-                        <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
-                          Dibekukan
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] font-bold text-[var(--vibe-text-sub)] mt-0.5">
-                      Kas Awal: {formatRp(summary.openingFloatCash)} | Sedang antar: {inFlightCount}
-                    </p>
-                  </div>
+        return (
+          <div className="bg-[var(--vibe-surface)] p-6 rounded-2xl border border-[var(--vibe-border)] space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[var(--vibe-accent-1-lt)] text-[var(--vibe-accent-1)]">
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-[var(--vibe-text-main)]">
+                    Pantauan Kas Berjalan Hari Ini ({activeRows.length} Kurir Bertugas)
+                  </h3>
+                  <p className="text-xs font-bold text-[var(--vibe-text-sub)]">
+                    Otomatis ditutup &amp; ditagihkan pukul{' '}
+                    {String(finConfig.dailySettlementCutoffHour).padStart(2, '0')}:00 WIB
+                  </p>
+                </div>
+              </div>
 
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold text-[var(--vibe-text-sub)] uppercase">
-                      {summary.netContinueNextDay >= 0 ? 'Estimasi Setor' : 'Estimasi Refill'}
-                    </p>
-                    <p
-                      className={`text-base font-black ${
-                        summary.orderCount === 0
-                          ? 'text-[var(--vibe-text-sub)]'
-                          : summary.netContinueNextDay >= 0
-                            ? 'text-green-700'
-                            : 'text-red-700'
+              {idleRowsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowIdleCouriers((v) => !v)}
+                  className="px-3.5 py-2 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-xs font-black text-[var(--vibe-text-sub)] hover:text-[var(--vibe-text-main)]"
+                >
+                  {showIdleCouriers
+                    ? 'Sembunyikan Kurir 0 Transaksi'
+                    : `Tampilkan Semua Kurir (+${idleRowsCount} tanpa transaksi)`}
+                </button>
+              )}
+            </div>
+
+            {displayedRows.length === 0 ? (
+              <div className="p-6 rounded-xl bg-[var(--vibe-surface-sub)] text-center text-xs font-bold text-[var(--vibe-text-sub)]">
+                Belum ada kurir yang memiliki transaksi selesai atau pengantaran aktif pada periode berjalan.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {displayedRows.map((row) => {
+                  const { courier, summary, inFlightCount } = row
+                  return (
+                    <div
+                      key={row.courierId}
+                      className={`p-5 rounded-2xl border space-y-4 ${
+                        courier.isSettlementBlocked
+                          ? 'bg-red-50/50 border-red-200'
+                          : 'bg-[var(--vibe-surface-sub)] border-[var(--vibe-border)]'
                       }`}
                     >
-                      {formatRp(summary.netContinueNextDay)}
-                    </p>
-                  </div>
-                </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Truck className="w-4 h-4 text-[var(--vibe-text-sub)]" />
+                          <h4 className="text-base font-black text-[var(--vibe-text-main)]">
+                            {courier.name}
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-full bg-white border border-[var(--vibe-border)] text-[11px] font-bold text-[var(--vibe-text-sub)]">
+                            {summary.orderCount} Selesai | {inFlightCount} Sedang Antar
+                          </span>
+                          {courier.isSettlementBlocked && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black">
+                              Dibekukan
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-bold text-[var(--vibe-text-sub)]">
+                          Modal Awal: {formatRp(summary.openingFloatCash)}
+                        </span>
+                      </div>
 
-                {hasActivity && (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-[var(--vibe-border)] text-[11px]">
-                      <div>
-                        <span className="block text-[var(--vibe-text-sub)] font-bold">
-                          Selesai ({summary.orderCount})
-                        </span>
-                        <span className="font-black text-[var(--vibe-text-main)]">
-                          {formatRp(summary.codOrderTotal + summary.qrisOrderTotal)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="block text-[var(--vibe-text-sub)] font-bold">
-                          Bayar Penjual
-                        </span>
-                        <span className="font-black text-rose-600">
-                          {formatRp(summary.sellerCashPaid)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="block text-[var(--vibe-text-sub)] font-bold">
-                          Tunai di Kurir
-                        </span>
-                        <span className="font-black text-[var(--vibe-text-main)]">
-                          {summary.endingCashInHand < 0
-                            ? `-${formatRp(summary.endingCashInHand)}`
-                            : formatRp(summary.endingCashInHand)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="block text-[var(--vibe-text-sub)] font-bold">
-                          Upah / Kas
-                        </span>
-                        <span className="font-black text-[var(--vibe-accent-1)]">
-                          {formatRp(summary.courierCommissionTotal)} /{' '}
-                          {formatRp(summary.kalurahanFeeTotal)}
-                        </span>
-                      </div>
+                      {summary.orderCount > 0 ? (
+                        <LedgerCalculationBox
+                          openingFloatCash={summary.openingFloatCash}
+                          sellerCashPaid={summary.sellerCashPaid}
+                          codOrderTotal={summary.codOrderTotal}
+                          qrisOrderTotal={summary.qrisOrderTotal}
+                          endingCashInHand={summary.endingCashInHand}
+                          courierCommissionTotal={summary.courierCommissionTotal}
+                          kalurahanFeeTotal={summary.kalurahanFeeTotal}
+                          kurirOutOfPocket={summary.kurirOutOfPocket}
+                          netContinueNextDay={summary.netContinueNextDay}
+                          netFullClose={summary.netFullClose}
+                          courierName={courier.name}
+                          busyKey={busyKey}
+                          onConfirm={(mode, amount) =>
+                            handleConfirmSettlement({
+                              courierId: row.courierId,
+                              courierName: courier.name,
+                              periodKey: row.periodKey,
+                              mode,
+                              amount,
+                            })
+                          }
+                        />
+                      ) : (
+                        <p className="text-xs font-bold text-[var(--vibe-text-sub)]">
+                          Belum ada pesanan selesai pada periode berjalan (Rp0 tagihan).
+                        </p>
+                      )}
                     </div>
-
-                    {summary.sellerCashPaid > summary.openingFloatCash ? (
-                      <div className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-900 text-[11px] font-bold">
-                        Memakai dana talangan pribadi melebihi kas awal ({formatRp(summary.openingFloatCash)})
-                      </div>
-                    ) : summary.sellerCashPaid === summary.openingFloatCash &&
-                      summary.sellerCashPaid > 0 ? (
-                      <div className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold">
-                        Kas awal {formatRp(summary.openingFloatCash)} terpakai penuh untuk belanja barang; setor penuh jika tutup shift: {formatRp(summary.netFullClose)}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-
-                {summary.orderCount > 0 && (
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      disabled={busyKey !== null}
-                      onClick={() =>
-                        handleConfirmSettlement({
-                          courierId: row.courierId,
-                          courierName: courier.name,
-                          periodKey: row.periodKey,
-                          mode: 'continue_float',
-                          amount: summary.netContinueNextDay,
-                        })
-                      }
-                      className="px-3.5 py-2 rounded-xl bg-[var(--vibe-text-main)] text-white text-xs font-black hover:opacity-90 disabled:opacity-50"
-                    >
-                      Tutup &amp; Rekonsiliasi Sekarang
-                    </button>
-                  </div>
-                )}
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
-      </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* SECTION 3: Riwayat Setoran Lunas */}
       <div className="bg-[var(--vibe-surface)] p-6 rounded-2xl border border-[var(--vibe-border)] space-y-4">
