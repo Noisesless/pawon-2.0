@@ -531,7 +531,7 @@ export async function updateOrderStatus(
 
     // 2. Kurir Menolak Order -> Catat penolakan & lempar otomatis ke kurir giliran berikutnya
     if (newStatus === 'reject') {
-      if (['shipped', 'delivering', 'delivered'].includes(order.status)) {
+      if (!['pending', 'processing', 'shipped', 'accepted'].includes(order.status)) {
         return {
           success: false,
           error: 'Pesanan sudah dalam tahap pengantaran dan tidak bisa ditolak.',
@@ -693,25 +693,48 @@ export async function updateOrderStatus(
 
     // 4. Penjual Menyerahkan / Kurir Sudah Mengambil Barang
     if (newStatus === 'shipped') {
-      await writeClient
-        .patch(order._id)
-        .set({ status: 'shipped', courierOfferedAt: null })
-        .commit()
+      const triggeredBySeller =
+        actionGuard?.role === 'seller' ||
+        (order.status === 'processing' && actionGuard?.role !== 'courier')
+      const shippedUpdates: Record<string, any> = { status: 'shipped' }
+      // Pertahankan courierOfferedAt bila Penjual yang klik siap tapi Kurir belum Terima Order
+      if (!triggeredBySeller) {
+        shippedUpdates.courierOfferedAt = null
+      }
+
+      await writeClient.patch(order._id).set(shippedUpdates).commit()
 
       const activeCourierName = order.courier?.name || 'Kurir PAWON'
       const activeCourierId = order.courier?._id || courierId || ''
 
       if (order.courier?.phone) {
-        const nextCourierMsg = buildCourierNextStepMessage({
-          baseUrl,
-          orderNumber,
-          courierId: activeCourierId,
-          courierName: activeCourierName,
-          stage: 'shipped',
-          customerName: order.customerName,
-          deliveryAddress: order.deliveryAddress,
-        })
-        await sendWhatsAppNotification(order.courier.phone, nextCourierMsg)
+        if (triggeredBySeller && order.courierOfferedAt) {
+          // Kurir belum sempat Terima Order saat Penjual sudah siap -> ingatkan dengan Terima/Tolak tetap aktif
+          const offerReminder = buildCourierOfferMessage({
+            baseUrl,
+            orderNumber,
+            courierId: activeCourierId,
+            courierName: activeCourierName,
+            customerName: order.customerName,
+            deliveryAddress: order.deliveryAddress,
+            paymentMethod: order.paymentMethod === 'qris' ? 'qris' : 'cod',
+            totalAmount: order.totalAmount || 0,
+            items: cleanItems,
+            notice: 'Barang sudah disiapkan penjual dan siap diambil sekarang.',
+          })
+          await sendWhatsAppNotification(order.courier.phone, offerReminder)
+        } else {
+          const nextCourierMsg = buildCourierNextStepMessage({
+            baseUrl,
+            orderNumber,
+            courierId: activeCourierId,
+            courierName: activeCourierName,
+            stage: 'shipped',
+            customerName: order.customerName,
+            deliveryAddress: order.deliveryAddress,
+          })
+          await sendWhatsAppNotification(order.courier.phone, nextCourierMsg)
+        }
       }
 
       await sendWhatsAppNotification(

@@ -186,9 +186,10 @@ export async function runCourierTimeoutCheck(options: {
 
   const offeredOrders: any[] =
     (await client.fetch(
-      `*[_type == "order" && !(_id in path("drafts.**")) && status == "processing" && defined(courierOfferedAt)]{
+      `*[_type == "order" && !(_id in path("drafts.**")) && status in ["processing", "shipped"] && defined(courierOfferedAt)]{
         _id,
         _rev,
+        status,
         orderNumber,
         customerName,
         deliveryAddress,

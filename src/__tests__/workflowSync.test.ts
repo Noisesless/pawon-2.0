@@ -129,12 +129,15 @@ vi.mock('next-sanity', () => ({
           })
       }
 
-      if (query.includes('_type == "order" && defined(courierOfferedAt)') || query.includes('status == "processing" && defined(courierOfferedAt)')) {
+      if (
+        query.includes('_type == "order" && defined(courierOfferedAt)') ||
+        query.includes('defined(courierOfferedAt)')
+      ) {
         const list = docs.filter(
           (d) =>
             d._type === 'order' &&
             !d._id.startsWith('drafts.') &&
-            d.status === 'processing' &&
+            (d.status === 'processing' || d.status === 'shipped') &&
             Boolean(d.courierOfferedAt)
         )
         return list.map((ord) => {
@@ -585,6 +588,14 @@ describe('Factual E2E Simulation: Admin Center, Dynamic QRIS, Courier Sync & Wha
     const vendorOrdersRes = await getVendorOrders('vendor-1')
     expect(vendorOrdersRes.success).toBe(true)
     expect(vendorOrdersRes.data?.some((o: any) => o.orderNumber === ordNum)).toBe(true)
+
+    // Even if seller marks 'shipped' before courier accepts, courierOfferedAt stays active for auto-skip
+    await updateOrderStatus(ordNum, 'shipped', 'Penjual siap', undefined, undefined, {
+      role: 'seller',
+      token: (await import('@/lib/actionToken')).createOrderActionToken(ordNum, 'seller', 'shipped'),
+    })
+    expect(mockDb.get(ordId).status).toBe('shipped')
+    expect(mockDb.get(ordId).courierOfferedAt).toBeTruthy()
 
     // Courier #1 rejects -> auto-rotates to Courier #2 (courier-resting)
     const rejectRes = await updateOrderStatus(ordNum, 'reject', 'Ban bocor', 'courier-active')
