@@ -15,6 +15,7 @@ import {
   Settings,
   Wallet,
   ExternalLink,
+  MapPin,
 } from 'lucide-react'
 import {
   fetchAdminDashboardData,
@@ -23,6 +24,7 @@ import {
 import AdminOrdersTab from './_components/AdminOrdersTab'
 import AdminFinanceTab from './_components/AdminFinanceTab'
 import AdminPartnersTab from './_components/AdminPartnersTab'
+import AdminMapTab from './_components/AdminMapTab'
 import AdminCatalogTab from './_components/AdminCatalogTab'
 import AdminContentTab from './_components/AdminContentTab'
 import AdminSettingsQrisTab from './_components/AdminSettingsQrisTab'
@@ -31,6 +33,7 @@ type ActiveTab =
   | 'orders'
   | 'finance'
   | 'partners'
+  | 'map'
   | 'catalog'
   | 'content'
   | 'incubator'
@@ -229,6 +232,11 @@ export default function AdminDashboardPage() {
       badge: dashboardData.vendors.filter((v: any) => !v.isVerified).length,
     },
     {
+      id: 'map',
+      label: 'Peta UMKM',
+      icon: <MapPin className="w-4 h-4" />,
+    },
+    {
       id: 'catalog',
       label: 'Katalog & Kategori',
       icon: <ShoppingBag className="w-4 h-4" />,
@@ -360,6 +368,13 @@ export default function AdminDashboardPage() {
             vendors={dashboardData.vendors}
             couriers={dashboardData.couriers}
             customers={dashboardData.customers}
+            onRefresh={() => loadAllData(true)}
+          />
+        )}
+
+        {activeTab === 'map' && (
+          <AdminMapTab
+            vendors={dashboardData.vendors}
             onRefresh={() => loadAllData(true)}
           />
         )}

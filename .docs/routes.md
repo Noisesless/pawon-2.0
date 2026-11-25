@@ -11,7 +11,7 @@ Dokumen ini memetakan seluruh rute aktif pada aplikasi **PAWON**, baik tampilan 
 | Route Path | File Path | Page Title | Auth / Peran | Status |
 |---|---|---|---|---|
 | `/` | `src/app/page.tsx` | Beranda Pasar Warga Pondokrejo | Publik | STABLE |
-| `/admin` | `src/app/admin/page.tsx` | Pusat Kendali Admin Kalurahan (7-Tab Zero-Draft + Keuangan Kurir + QRIS + SOP) | PIN Admin (`appSettings.adminPin`) | STABLE |
+| `/admin` | `src/app/admin/page.tsx` | Pusat Kendali Admin Kalurahan (8-Tab Zero-Draft + Keuangan Kurir + Peta UMKM + QRIS + SOP) | PIN Admin (`appSettings.adminPin`) | STABLE |
 | `/cart` | `src/app/cart/page.tsx` | Keranjang Belanja Warga (Ongkir Dinamis) | Publik | STABLE |
 | `/categories` | `src/app/categories/page.tsx` | Kategori Produk & Jasa | Publik | STABLE |
 | `/checkout` | `src/app/checkout/page.tsx` | Checkout & Dynamic QRIS / COD | Publik / Warga | STABLE |

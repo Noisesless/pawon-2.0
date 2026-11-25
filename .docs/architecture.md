@@ -14,7 +14,7 @@ graph TD
     subgraph Client ["Tier 1: Presentation Layer"]
         Desktop["Desktop Browser (Next.js SSR/Client Components)"]
         Mobile["Mobile Browser / PWA (Dedicated Mobile Views)"]
-        AdminUI["Pusat Kendali Admin (/admin — 7-Tab Zero-Draft)"]
+        AdminUI["Pusat Kendali Admin (/admin — 8-Tab Zero-Draft)"]
     end
 
     subgraph Middleware ["Device Detection & Routing"]
@@ -103,14 +103,15 @@ sequenceDiagram
 
 ## 3. Pusat Kendali Admin Zero-Draft (`/admin`) & Dynamic QRIS
 
-- `/admin` menyediakan 7 tab operasional langsung menulis dokumen *published* (bypass sistem `drafts.*` Sanity Studio):
+- `/admin` menyediakan 8 tab operasional langsung menulis dokumen *published* (bypass sistem `drafts.*` Sanity Studio):
   1. **Pesanan**: KPI interaktif, pengelompokan periode (`Bulan > Minggu > Hari`) dengan *auto-collapse* akordeon, tampilan Tabel vs Kartu, 5-stage progress stepper, rincian subtotal + ongkir, 3-way WA links, CSV export, dan kontrol **SOP Otomatis** (`Dry-Run` & `Eksekusi`).
   2. **Keuangan Kurir**: Pantauan kas awal harian (`Rp100.000`), transaksi selesai belum tutup buku, dana talangan pribadi, posisi tunai di tangan kurir, tagihan/refill pukul **`16:00 WIB`**, peringatan `> 24 jam`, pembekuan `> 48 jam`, tombol **Konfirmasi Setor/Refill** (*Lanjut Kas Besok* vs *Tutup Kas Penuh*), dan tombol **Reset Rekap Kas**.
-  3. **Mitra & Warga**: CRUD `vendor`, `courier`, `customer` (termasuk status aktif, verifikasi, PIN portal, skor COD, status blokir setoran).
-  4. **Katalog & Kategori**: CRUD `product`, `service`, `category` + upload gambar ke Sanity Asset CDN.
-  5. **Konten & Banner**: CRUD `banner` (desktop/mobile) dan `article`.
-  6. **Inkubator UMKM**: CRUD `incubatorService` dan konfigurasi `incubatorSettings`.
-  7. **Pengaturan & QRIS**: Konfigurasi WA Admin (`adminPhone`), tarif ongkir (`6000`), upah kurir (`4000`), kas Kalurahan (`2000`), kas awal kurir (`100000`), jam reset (`16`), batas tunda (`48`), **Dynamic QRIS Settings**, dan **Order SOP Rules**.
+  3. **Mitra & Warga**: CRUD `vendor` (+ titik GPS/koordinat), `courier`, `customer` (termasuk status aktif, verifikasi, PIN portal, skor COD, status blokir setoran).
+  4. **Peta UMKM**: Peta interaktif Kalurahan Pondokrejo berbasis `Leaflet` + GeoJSON resmi (`/geo/pondokrejo-boundary.geojson`, `/geo/pondokrejo-toponimi.geojson`) menampilkan sebaran titik lapak UMKM buka/tutup, tautan WA/etalase/rute, serta mode klik-peta untuk menandai koordinat UMKM.
+  5. **Katalog & Kategori**: CRUD `product`, `service`, `category` + upload gambar ke Sanity Asset CDN.
+  6. **Konten & Banner**: CRUD `banner` (desktop/mobile) dan `article`.
+  7. **Inkubator UMKM**: CRUD `incubatorService` dan konfigurasi `incubatorSettings`.
+  8. **Pengaturan & QRIS**: Konfigurasi WA Admin (`adminPhone`), tarif ongkir (`6000`), upah kurir (`4000`), kas Kalurahan (`2000`), kas awal kurir (`100000`), jam reset (`16`), batas tunda (`48`), **Dynamic QRIS Settings**, dan **Order SOP Rules**.
 
 ---
 

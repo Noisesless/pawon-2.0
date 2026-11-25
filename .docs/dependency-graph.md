@@ -32,7 +32,7 @@ Dokumen ini memetakan derajat keterikatan (*coupling*) antar berkas dalam basis 
 | `src/lib/orderSopEngine.ts` | `next-sanity`, `whatsapp.ts`, `courierAssigner.ts`, `courierFinanceEngine.ts` | `instrumentation.ts`, `/api/cron/order-sop`, `admin.ts` | **Tinggi** | Evaluasi & eksekusi auto-cancel/auto-complete, auto-skip kurir dengan atomic `_rev` lock, & pemicu sinkronisasi setoran harian. |
 | `src/instrumentation.ts` | `orderSopEngine.ts`, `courierFinanceEngine.ts` | Next.js Runtime Startup | **Sedang** | Menjalankan background interval SOP (10m), auto-skip kurir (1m), dan setoran kas harian (5m) saat `NODE_ENV=production`. |
 | `src/components/DynamicQrisCard.tsx` | `qrisEngine.ts`, `qrcode.react` | `/checkout`, `/mobile/checkout` | **Sedang** | Render QR Code dinamis + ekspor gambar kartu PNG Canvas untuk pembeli. |
-| `src/app/admin/page.tsx` & `src/app/admin/_components/*` | `actions/admin.ts`, `qrisEngine.ts`, `courierFinanceEngine.ts`, `lucide-react` | Petugas Admin Kalurahan | **Sedang** | 7 modul tab manajemen (Orders/SOP, Keuangan Kurir, Partners, Catalog, Content, Incubator, Settings/QRIS). |
+| `src/app/admin/page.tsx` & `src/app/admin/_components/*` | `actions/admin.ts`, `qrisEngine.ts`, `courierFinanceEngine.ts`, `leaflet`, `lucide-react` | Petugas Admin Kalurahan | **Sedang** | 8 modul tab manajemen (Orders/SOP, Keuangan Kurir, Partners, Peta UMKM, Catalog, Content, Incubator, Settings/QRIS). |
 | `src/app/layout.tsx` & `src/app/mobile/layout.tsx` | `Navbar.tsx`, `BottomNav.tsx`, `CartContext.tsx` | Root Shell Desktop & Mobile | **Tinggi** | Shell aplikasi utama, metadata, CSS tokens `globals.css`, dan navigasi. |
 
 ---

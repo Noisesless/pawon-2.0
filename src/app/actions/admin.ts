@@ -180,6 +180,8 @@ export async function fetchAdminDashboardData() {
           isOpen,
           closingMessage,
           isVerified,
+          latitude,
+          longitude,
           "logoAssetId": logo.asset._ref,
           "logoUrl": logo.asset->url
         }`,
@@ -1002,6 +1004,8 @@ export async function saveVendor(data: {
   isOpen: boolean
   closingMessage?: string
   isVerified: boolean
+  latitude?: number | string | null
+  longitude?: number | string | null
   logoAssetId?: string
 }) {
   try {
@@ -1009,6 +1013,15 @@ export async function saveVendor(data: {
     if (!cleanName || !data.phone.trim()) {
       return { success: false, error: 'Nama UMKM dan Nomor WhatsApp wajib diisi.' }
     }
+
+    const latNum =
+      data.latitude !== undefined && data.latitude !== null && String(data.latitude).trim() !== ''
+        ? Number(data.latitude)
+        : null
+    const lngNum =
+      data.longitude !== undefined && data.longitude !== null && String(data.longitude).trim() !== ''
+        ? Number(data.longitude)
+        : null
 
     const payload: any = {
       _type: 'vendor',
@@ -1024,6 +1037,11 @@ export async function saveVendor(data: {
       isVerified: Boolean(data.isVerified),
     }
 
+    if (latNum !== null && Number.isFinite(latNum) && lngNum !== null && Number.isFinite(lngNum)) {
+      payload.latitude = latNum
+      payload.longitude = lngNum
+    }
+
     if (data.logoAssetId) {
       payload.logo = {
         _type: 'image',
@@ -1033,7 +1051,12 @@ export async function saveVendor(data: {
 
     if (data._id) {
       const cleanId = canonicalId(data._id)
-      await writeClient.patch(cleanId).set(payload).commit()
+      const patch = writeClient.patch(cleanId).set(payload)
+      if (latNum === null || lngNum === null) {
+        await patch.unset(['latitude', 'longitude']).commit()
+      } else {
+        await patch.commit()
+      }
       await purgeDraft(cleanId)
       return { success: true, _id: cleanId }
     } else {
@@ -1043,6 +1066,45 @@ export async function saveVendor(data: {
   } catch (error: any) {
     console.error('saveVendor error:', error)
     return { success: false, error: error?.message || 'Gagal menyimpan data UMKM.' }
+  }
+}
+
+/**
+ * Simpan titik koordinat peta lokasi UMKM secara langsung dari tab Peta UMKM
+ */
+export async function updateVendorLocationAction(params: {
+  vendorId: string
+  latitude: number
+  longitude: number
+}) {
+  try {
+    const cleanId = canonicalId(params.vendorId)
+    const lat = Number(params.latitude)
+    const lng = Number(params.longitude)
+    if (
+      !cleanId ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return { success: false, error: 'Koordinat lokasi tidak valid.' }
+    }
+
+    await writeClient
+      .patch(cleanId)
+      .set({ latitude: Number(lat.toFixed(6)), longitude: Number(lng.toFixed(6)) })
+      .commit()
+    await purgeDraft(cleanId)
+    return { success: true }
+  } catch (error: any) {
+    console.error('updateVendorLocationAction error:', error)
+    return {
+      success: false,
+      error: error?.message || 'Gagal menyimpan titik lokasi UMKM.',
+    }
   }
 }
 

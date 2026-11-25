@@ -20,6 +20,7 @@ import {
   Truck,
   XCircle,
   RefreshCw,
+  MapPin,
 } from 'lucide-react'
 import VendorProductManager from './VendorProductManager'
 import VendorServiceManager from './VendorServiceManager'
@@ -44,6 +45,13 @@ export default function VendorDashboard({ initialData, onLogout }: Props) {
   const [isOpen, setIsOpen] = useState(initialData.isOpen)
   const [closingMessage, setClosingMessage] = useState(initialData.closingMessage || '')
   const [description, setDescription] = useState(initialData.description || '')
+  const [latitude, setLatitude] = useState<number | null>(
+    typeof initialData.latitude === 'number' ? initialData.latitude : null
+  )
+  const [longitude, setLongitude] = useState<number | null>(
+    typeof initialData.longitude === 'number' ? initialData.longitude : null
+  )
+  const [locating, setLocating] = useState(false)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -71,6 +79,8 @@ export default function VendorDashboard({ initialData, onLogout }: Props) {
       isOpen,
       closingMessage,
       description,
+      latitude,
+      longitude,
     })
 
     if (res.success) {
@@ -344,6 +354,46 @@ export default function VendorDashboard({ initialData, onLogout }: Props) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
+              </div>
+
+              <div className="mt-5 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black text-slate-800 inline-flex items-center gap-1.5">
+                    <MapPin className="w-4 h-4 text-green-600" />
+                    <span>Titik Lokasi Lapak di Peta Pondokrejo</span>
+                  </p>
+                  <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                    {latitude !== null && longitude !== null
+                      ? `Tersimpan: ${latitude}, ${longitude}`
+                      : 'Belum ditandai. Klik tombol di samping saat berada di lapak.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={locating}
+                  onClick={() => {
+                    if (!navigator.geolocation) {
+                      alert('Browser tidak mendukung GPS.')
+                      return
+                    }
+                    setLocating(true)
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setLatitude(Number(pos.coords.latitude.toFixed(6)))
+                        setLongitude(Number(pos.coords.longitude.toFixed(6)))
+                        setLocating(false)
+                      },
+                      () => {
+                        setLocating(false)
+                        alert('Gagal membaca lokasi GPS. Pastikan izin lokasi diaktifkan.')
+                      },
+                      { enableHighAccuracy: true, timeout: 8000 }
+                    )
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-black text-green-700 hover:bg-green-50 disabled:opacity-50"
+                >
+                  {locating ? 'Mengambil Lokasi...' : 'Tandai Lokasi Lapak (GPS)'}
+                </button>
               </div>
             </div>
 

@@ -127,6 +127,7 @@ erDiagram
 ### 3. `vendor` (`vendorType.ts`)
 - `name` (String, Required), `slug` (Slug, Required), `phone` (String, Required), `address` (Text)
 - `pin` (String, 4–6 digit, untuk login `/lapak`), `isVerified` (Boolean), `isOpen` (Boolean), `closingMessage` (String)
+- `latitude` (Number), `longitude` (Number): Koordinat lokasi lapak UMKM di peta wilayah Pondokrejo.
 
 ### 4. `courier` (`courierType.ts`)
 - `name` (String, Required), `phone` (String, Required), `pin` (String, 4–6 digit, untuk login `/kurir`)

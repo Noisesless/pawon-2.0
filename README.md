@@ -11,7 +11,7 @@
 - **Checkout COD & Dynamic QRIS (EMVCo)**: Pembayaran tunai di tempat (COD) atau **Dynamic QRIS** dengan injeksi nominal tagihan tepat (TLV Tag `54` + validasi checksum CRC-16) dan opsi unduh kartu QRIS PNG siap scan.
 
 ### 🛡️ Pusat Kendali Admin Zero-Draft (`/admin`)
-- **7-Tab Manajemen Langsung**: Kelola **Pesanan**, **Keuangan Kurir** (kas awal `Rp100.000`, rekap setor/refill jam `16:00 WIB`, dana talangan, & blokir `> 2x24 jam`), **Mitra & Warga**, **Katalog & Kategori**, **Konten & Banner**, **Inkubator UMKM**, serta **Pengaturan & QRIS** tanpa hambatan dokumen `drafts.*`.
+- **8-Tab Manajemen Langsung**: Kelola **Pesanan**, **Keuangan Kurir** (kas awal `Rp100.000`, rekap setor/refill jam `16:00 WIB`, dana talangan, & blokir `> 2x24 jam`), **Mitra & Warga**, **Peta UMKM** (peta batas wilayah resmi Pondokrejo GeoJSON + sebaran pin toko), **Katalog & Kategori**, **Konten & Banner**, **Inkubator UMKM**, serta **Pengaturan & QRIS** tanpa hambatan dokumen `drafts.*`.
 - **Analitik & Pengelompokan Transaksi**: KPI interaktif, grup pesanan berjenjang (**Bulan > Minggu > Hari**) dengan *auto-collapse* akordeon, mode tampilan Tabel/Kartu, rincian subtotal + ongkir (`Rp6.000` = `Rp4.000` kurir + `Rp2.000` Kalurahan), tautan koordinasi WhatsApp 3-arah, serta ekspor CSV.
 - **Kurir Round-Robin & Auto-Skip**: Penugasan kurir bergiliran adil (`lastAssignedAt`), opsi **Terima/Tolak Order** langsung di WA & `/kurir`, pengalihan otomatis jika melewati batas waktu respons, serta privasi identitas kurir antrean hingga kurir menyanggupi tugas.
 - **Order SOP & Settlement Worker**: Penutupan otomatis pesanan kedaluwarsa (10m), auto-skip kurir (1m), serta tutup buku kas harian `16:00 WIB` & pembekuan tunggakan `> 48 jam` (5m) melalui `src/instrumentation.ts` dan `/api/cron/order-sop`.
@@ -32,7 +32,7 @@
 - **Framework**: [Next.js 16](https://nextjs.org/) (App Router + Turbopack, TypeScript)
 - **Headless CMS & Data Store**: [Sanity.io v5](https://www.sanity.io/) (`next-sanity`)
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Icons & QR**: [Lucide React](https://lucide.dev/), [`qrcode.react`](https://www.npmjs.com/package/qrcode.react)
+- **Icons, Peta & QR**: [Lucide React](https://lucide.dev/), [Leaflet](https://leafletjs.com/) (+ GeoJSON Pondokrejo), [`qrcode.react`](https://www.npmjs.com/package/qrcode.react)
 - **Testing**: [Vitest](https://vitest.dev/) & React Testing Library
 - **WhatsApp Gateway**: Fonnte API
 - **Deployment Target**: Ubuntu VPS (CloudPanel + Nginx Reverse Proxy + PM2)

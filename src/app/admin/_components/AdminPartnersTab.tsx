@@ -14,6 +14,7 @@ import {
   Upload,
   Loader2,
   X,
+  MapPin,
 } from 'lucide-react'
 import {
   saveVendor,
@@ -79,6 +80,8 @@ export default function AdminPartnersTab({
       closingMessage: vendor.closingMessage || '',
       isVerified:
         field === 'isVerified' ? !vendor.isVerified : Boolean(vendor.isVerified),
+      latitude: vendor.latitude ?? null,
+      longitude: vendor.longitude ?? null,
       logoAssetId: vendor.logoAssetId,
     })
     setBusyId(null)
@@ -512,19 +515,81 @@ export default function AdminPartnersTab({
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">
-                Alamat Pedukuhan
-              </label>
-              <input
-                type="text"
-                value={vendorModal.address || ''}
-                onChange={(e) =>
-                  setVendorModal({ ...vendorModal, address: e.target.value })
-                }
-                className="w-full p-2.5 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">
+                  Alamat Pedukuhan
+                </label>
+                <input
+                  type="text"
+                  value={vendorModal.address || ''}
+                  onChange={(e) =>
+                    setVendorModal({ ...vendorModal, address: e.target.value })
+                  }
+                  className="w-full p-2.5 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] text-sm font-bold"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-[var(--vibe-surface-sub)] border border-[var(--vibe-border)] space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-black text-[var(--vibe-text-main)] inline-flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[var(--vibe-accent-1)]" />
+                    <span>Titik Lokasi Peta Pondokrejo</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!navigator.geolocation) {
+                        alert('Browser tidak mendukung deteksi GPS otomatis.')
+                        return
+                      }
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) =>
+                          setVendorModal({
+                            ...vendorModal,
+                            latitude: Number(pos.coords.latitude.toFixed(6)),
+                            longitude: Number(pos.coords.longitude.toFixed(6)),
+                          }),
+                        () =>
+                          alert(
+                            'Gagal membaca GPS perangkat. Pastikan izin lokasi aktif atau gunakan tab Peta UMKM untuk klik titik langsung.'
+                          ),
+                        { enableHighAccuracy: true, timeout: 8000 }
+                      )
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-[var(--vibe-border)] text-[11px] font-black text-[var(--vibe-accent-1)]"
+                  >
+                    Ambil GPS Perangkat
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Latitude (-7.66...)"
+                    value={vendorModal.latitude ?? ''}
+                    onChange={(e) =>
+                      setVendorModal({
+                        ...vendorModal,
+                        latitude: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 rounded-lg bg-white border border-[var(--vibe-border)] text-xs font-bold"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Longitude (110.30...)"
+                    value={vendorModal.longitude ?? ''}
+                    onChange={(e) =>
+                      setVendorModal({
+                        ...vendorModal,
+                        longitude: e.target.value,
+                      })
+                    }
+                    className="w-full p-2 rounded-lg bg-white border border-[var(--vibe-border)] text-xs font-bold"
+                  />
+                </div>
+              </div>
 
             <div>
               <label className="block text-xs font-bold text-[var(--vibe-text-sub)] mb-1">

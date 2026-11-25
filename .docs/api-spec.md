@@ -72,7 +72,8 @@ Semua mutasi menulis langsung dokumen *published* di Sanity via `SANITY_API_WRIT
 |---|---|---|
 | `verifyAdminPin` | Auth | Memvalidasi PIN admin terhadap `appSettings.adminPin` di Sanity. |
 | `fetchAllOrders` | Orders | Mengambil daftar pesanan lengkap beserta info kurir & daftar kurir aktif. |
-| `fetchAdminDashboardData` | Dashboard | Batch fetch seluruh entitas (termasuk `courierSettlements` dan konfigurasi kas/tarif `appSettings`) untuk 7 tab admin. |
+| `fetchAdminDashboardData` | Dashboard | Batch fetch seluruh entitas (termasuk `courierSettlements`, koordinat `vendor`, dan konfigurasi kas/tarif `appSettings`) untuk 8 tab admin. |
+| `updateVendorLocationAction` | Peta UMKM | Menyimpan koordinat `latitude` & `longitude` UMKM langsung dari pin klik pada tab **Peta UMKM**. |
 | `adminConfirmAndAssignOrder` | Orders | Konfirmasi pesanan masuk, update pembayaran QRIS jika perlu, dan tugaskan kurir. |
 | `adminUpdateOrderDirect` | Orders | Ubah status pesanan, status bayar, kurir, dan catatan secara langsung dari tabel/kartu admin. |
 | `adminQuickOrderTransition` | Orders | Transisi cepat status per tahap pesanan (`processing`, `shipped`, `delivering`, `delivered`, `completed`, `cancelled`). |

@@ -79,6 +79,18 @@ export const vendorType = defineType({
       initialValue: false,
       description: 'Aktifkan ini jika UMKM sudah diverifikasi oleh Admin Kalurahan.',
     }),
+    defineField({
+      name: 'latitude',
+      title: 'Koordinat Latitude Peta',
+      type: 'number',
+      description: 'Garis lintang lokasi lapak di wilayah Pondokrejo (contoh: -7.66577).',
+    }),
+    defineField({
+      name: 'longitude',
+      title: 'Koordinat Longitude Peta',
+      type: 'number',
+      description: 'Garis bujur lokasi lapak di wilayah Pondokrejo (contoh: 110.3059).',
+    }),
   ],
   preview: {
     select: {

@@ -27,6 +27,8 @@ export async function getVendorByPhone(phone: string, pin: string) {
       isOpen,
       closingMessage,
       businessType,
+      latitude,
+      longitude,
       "slug": slug.current
     }`
     const vendor = await writeClient.fetch(query, { variants }, { cache: 'no-store' })
@@ -52,18 +54,31 @@ export async function getVendorByPhone(phone: string, pin: string) {
  */
 export async function updateVendorProfile(
   vendorId: string,
-  data: { isOpen: boolean; closingMessage?: string; description?: string }
+  data: {
+    isOpen: boolean
+    closingMessage?: string
+    description?: string
+    latitude?: number | null
+    longitude?: number | null
+  }
 ) {
   try {
     const cleanId = vendorId.replace(/^drafts\./, '')
-    await writeClient
-      .patch(cleanId)
-      .set({
-        isOpen: data.isOpen,
-        closingMessage: data.closingMessage || '',
-        description: data.description || '',
-      })
-      .commit()
+    const updates: Record<string, any> = {
+      isOpen: data.isOpen,
+      closingMessage: data.closingMessage || '',
+      description: data.description || '',
+    }
+    if (
+      typeof data.latitude === 'number' &&
+      Number.isFinite(data.latitude) &&
+      typeof data.longitude === 'number' &&
+      Number.isFinite(data.longitude)
+    ) {
+      updates.latitude = Number(data.latitude.toFixed(6))
+      updates.longitude = Number(data.longitude.toFixed(6))
+    }
+    await writeClient.patch(cleanId).set(updates).commit()
 
     return { success: true }
   } catch (error) {
