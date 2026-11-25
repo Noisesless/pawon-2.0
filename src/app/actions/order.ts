@@ -623,15 +623,19 @@ export async function updateOrderStatus(
     }
 
     // Validasi kepemilikan kurir bila aksi dilakukan lewat tautan WA kurir
-    if (
-      actionGuard?.role === 'courier' &&
-      courierId &&
-      order.courier?._id &&
-      courierId !== order.courier._id
-    ) {
-      return {
-        success: false,
-        error: 'Tugas pengantaran ini sudah dialihkan ke kurir lain.',
+    if (actionGuard?.role === 'courier' && courierId) {
+      const rejectedList: string[] = Array.isArray(order.rejectedCourierIds)
+        ? order.rejectedCourierIds
+        : []
+      if (
+        !order.courier?._id ||
+        order.courier._id !== courierId ||
+        rejectedList.includes(courierId)
+      ) {
+        return {
+          success: false,
+          error: 'Penawaran tugas ini sudah kedaluwarsa atau dialihkan ke kurir lain.',
+        }
       }
     }
 
